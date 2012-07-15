@@ -41,6 +41,11 @@ typedef struct {
 #define PL011_FLAG_TXFF 0x20
 #define PL011_FLAG_RXFE 0x10
 
+#if !defined(BCM2708)
+#define logout(fmt, ...) \
+    do { } while (0)
+#endif
+
 static const unsigned char pl011_id_arm[8] =
   { 0x11, 0x10, 0x14, 0x00, 0x0d, 0xf0, 0x05, 0xb1 };
 static const unsigned char pl011_id_luminary[8] =
@@ -59,6 +64,8 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
 {
     pl011_state *s = (pl011_state *)opaque;
     uint32_t c;
+
+    logout("offset=0x%02x (UART0)\n", offset);
 
     if (offset >= 0xfe0 && offset < 0x1000) {
         return s->id[(offset - 0xfe0) >> 2];
@@ -133,6 +140,8 @@ static void pl011_write(void *opaque, hwaddr offset,
     pl011_state *s = (pl011_state *)opaque;
     unsigned char ch;
 
+    logout("offset=0x%02x, value=0x%04" PRIx64 " (UART0)\n", offset, value);
+
     switch (offset >> 2) {
     case 0: /* UARTDR */
         /* ??? Check if transmitter is enabled.  */
@@ -193,6 +202,8 @@ static int pl011_can_receive(void *opaque)
 {
     pl011_state *s = (pl011_state *)opaque;
 
+    logout("\n");
+
     if (s->lcr & 0x10)
         return s->read_count < 16;
     else
@@ -221,11 +232,13 @@ static void pl011_put_fifo(void *opaque, uint32_t value)
 
 static void pl011_receive(void *opaque, const uint8_t *buf, int size)
 {
+    logout("\n");
     pl011_put_fifo(opaque, *buf);
 }
 
 static void pl011_event(void *opaque, int event)
 {
+    logout("\n");
     if (event == CHR_EVENT_BREAK)
         pl011_put_fifo(opaque, 0x400);
 }
@@ -260,6 +273,10 @@ static const VMStateDescription vmstate_pl011 = {
         VMSTATE_END_OF_LIST()
     }
 };
+
+#if defined(BCM2708)
+
+#else /* BCM2708 */
 
 static int pl011_init(SysBusDevice *dev, const unsigned char *id)
 {
@@ -328,3 +345,5 @@ static void pl011_register_types(void)
 }
 
 type_init(pl011_register_types)
+
+#endif /* BCM2708 */

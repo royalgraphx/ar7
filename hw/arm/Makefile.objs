@@ -42,7 +42,6 @@ obj-y += z2.o
 obj-y += musicpal.o bitbang_i2c.o marvell_88w8618_audio.o
 obj-y += framebuffer.o
 obj-y += vexpress.o
-obj-y += raspi.o
 obj-y += strongarm.o
 obj-y += collie.o
 obj-y += imx_serial.o imx_ccm.o imx_timer.o imx_avic.o
@@ -50,3 +49,5 @@ obj-y += kzm.o
 obj-$(CONFIG_FDT) += ../device_tree.o
 
 obj-y := $(addprefix ../,$(obj-y))
+
+obj-y += raspi.o

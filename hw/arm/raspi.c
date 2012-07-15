@@ -9,16 +9,17 @@
  * works (partially as of 2012-07) with the Linux BCM2708 code.
  */
 
-#include "sysbus.h"
-#include "arm-misc.h"
-#include "devices.h"
+#include "qemu-common.h"
+#include "hw/arm-misc.h"
+#include "hw/devices.h"
+#include "hw/boards.h"
+#include "hw/flash.h"
+#include "hw/sysbus.h"
+#include "blockdev.h"
+#include "exec-memory.h"
 #include "net.h"
 #include "sysemu.h"
 //~ #include "i2c.h"
-#include "boards.h"
-#include "blockdev.h"
-#include "exec-memory.h"
-#include "flash.h"
 
 //~ $2 = {{virtual = 0xf200b000, pfn = 0x2000b, length = 0x1000, type = 0x0}, {virtual = 0xf2201000, pfn = 0x20201, length = 0x1000, type = 0x0}, {virtual = 0xf2215000,
     //~ pfn = 0x20215, length = 0x1000, type = 0x0}, {virtual = 0xf2007000, pfn = 0x20007, length = 0x1000, type = 0x0}, {virtual = 0xf2000000, pfn = 0x20000, length = 0x1000,
@@ -27,6 +28,9 @@
 
 #define logout(fmt, ...) \
     fprintf(stderr, "RPI\t%-24s" fmt, __func__, ##__VA_ARGS__)
+
+#define BCM2708
+#include "hw/pl011.c"
 
 /* Code copied from Linux arch/arm/mach-bcm2708/include/mach/platform.h. */
 
@@ -273,6 +277,7 @@ typedef struct
     MemoryRegion ic_mem;
     MemoryRegion st_mem;
     BCM2708SystemTimer st;      /* system timer */
+    pl011_state uart0;
     uint32_t level;
     uint32_t mask;
     uint32_t pic_enable;
@@ -582,12 +587,39 @@ static const MemoryRegionOps bcm2708_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+/* -------------------------------------------------------------------------- */
+
+static BCM2708State *bcm2708;
+
+static int bcm2708_pl011_arm_init(SysBusDevice *dev, pl011_state *s)
+{
+    //~ sysbus_init_irq(dev, &s->irq);
+    s->id = pl011_id_arm;
+    s->chr = qemu_char_get_next_serial();
+
+    s->read_trigger = 1;
+    s->ifl = 0x12;
+    s->cr = 0x300;
+    s->flags = 0x90;
+    if (s->chr) {
+        qemu_chr_add_handlers(s->chr, pl011_can_receive, pl011_receive,
+                              pl011_event, s);
+    }
+    vmstate_register(&dev->qdev, -1, &vmstate_pl011, s);
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+
 static int bcm2708_init(SysBusDevice *dev)
 {
     BCM2708State *s = FROM_SYSBUS(BCM2708State, dev);
     int i;
 
     logout("\n");
+
+    bcm2708 = s;
+
     //~ qdev_init_gpio_in(&dev->qdev, bcm2708_set_irq, 32);
     for (i = 0; i < 32; i++) {
         sysbus_init_irq(dev, &s->parent[i]);
@@ -612,12 +644,19 @@ static int bcm2708_init(SysBusDevice *dev)
                                 ST_BASE - BCM2708_PERI_BASE,
                                 &s->st_mem);
 
+    memory_region_init_io(&s->uart0.iomem, &pl011_ops, s, "bcm2708.uart0",
+                          0x1000);
+    memory_region_add_subregion(&s->iomem,
+                                UART0_BASE - BCM2708_PERI_BASE,
+                                &s->uart0.iomem);
+    bcm2708_pl011_arm_init(dev, &s->uart0);
+
     s->st.timer = qemu_new_timer_us(vm_clock, bcm2708_timer_tick, s);
     s->st.expire = qemu_get_clock_us(vm_clock);
     bcm2708_timer_next(s);
 
     //~ sysbus_create_simple("pl011", 0x07e20100, s->parent[12]);
-    sysbus_create_simple("pl011", UART0_BASE, s->parent[12]);
+    //~ sysbus_create_simple("bcm2708.pl011", UART0_BASE, s->parent[12]);
     //~ sysbus_create_simple("sp804", 0x07e00400, s->parent[12]);
     sysbus_create_simple("sp804", ARMCTRL_TIMER0_1_BASE, s->parent[12]);
 
