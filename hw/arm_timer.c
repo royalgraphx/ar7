@@ -24,6 +24,11 @@
 #define TIMER_CTRL_PERIODIC     (1 << 6)
 #define TIMER_CTRL_ENABLE       (1 << 7)
 
+#if !defined(BCM2708)
+#define logout(fmt, ...) \
+    do { } while (0)
+#endif
+
 typedef struct {
     ptimer_state *timer;
     uint32_t control;
@@ -209,6 +214,8 @@ static uint64_t sp804_read(void *opaque, hwaddr offset,
 {
     sp804_state *s = (sp804_state *)opaque;
 
+    logout("offset=0x%02" TARGET_PRIxPHYS " (timer)\n", offset);
+
     if (offset < 0x20) {
         return arm_timer_read(s->timer[0], offset);
     }
@@ -240,6 +247,9 @@ static void sp804_write(void *opaque, hwaddr offset,
                         uint64_t value, unsigned size)
 {
     sp804_state *s = (sp804_state *)opaque;
+
+    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (timer)\n",
+           offset, value);
 
     if (offset < 0x20) {
         arm_timer_write(s->timer[0], offset, value);
@@ -284,11 +294,17 @@ static int sp804_init(SysBusDevice *dev)
     s->timer[1] = arm_timer_init(s->freq1);
     s->timer[0]->irq = qi[0];
     s->timer[1]->irq = qi[1];
+#if defined(BCM2708)
+    memory_region_init_io(&s->iomem, &sp804_ops, s, "bcm2708.sp804", 0x0400);
+#else
     memory_region_init_io(&s->iomem, &sp804_ops, s, "sp804", 0x1000);
+#endif
     sysbus_init_mmio(dev, &s->iomem);
     vmstate_register(&dev->qdev, -1, &vmstate_sp804, s);
     return 0;
 }
+
+#if !defined(BCM2708)
 
 /* Integrator/CP timer module.  */
 
@@ -368,6 +384,8 @@ static TypeInfo icp_pit_info = {
     .class_init    = icp_pit_class_init,
 };
 
+#endif
+
 static Property sp804_properties[] = {
     DEFINE_PROP_UINT32("freq0", sp804_state, freq0, 1000000),
     DEFINE_PROP_UINT32("freq1", sp804_state, freq1, 1000000),
@@ -384,7 +402,11 @@ static void sp804_class_init(ObjectClass *klass, void *data)
 }
 
 static TypeInfo sp804_info = {
+#if defined(BCM2708)
+    .name          = "bcm2708.sp804",
+#else
     .name          = "sp804",
+#endif
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(sp804_state),
     .class_init    = sp804_class_init,
@@ -428,7 +450,9 @@ static TypeInfo bcm2708_sp804_info = {
 
 static void arm_timer_register_types(void)
 {
+#if !defined(BCM2708)
     type_register_static(&icp_pit_info);
+#endif
     type_register_static(&sp804_info);
     type_register_static(&bcm2708_sp804_info);
 }

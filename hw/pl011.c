@@ -65,7 +65,7 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
     pl011_state *s = (pl011_state *)opaque;
     uint32_t c;
 
-    logout("offset=0x%02x (UART0)\n", offset);
+    logout("offset=0x%02" TARGET_PRIxPHYS " (UART0)\n", offset);
 
     if (offset >= 0xfe0 && offset < 0x1000) {
         return s->id[(offset - 0xfe0) >> 2];
@@ -140,7 +140,8 @@ static void pl011_write(void *opaque, hwaddr offset,
     pl011_state *s = (pl011_state *)opaque;
     unsigned char ch;
 
-    logout("offset=0x%02x, value=0x%04" PRIx64 " (UART0)\n", offset, value);
+    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (UART0)\n",
+           offset, value);
 
     switch (offset >> 2) {
     case 0: /* UARTDR */

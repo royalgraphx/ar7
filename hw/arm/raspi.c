@@ -21,6 +21,9 @@
 #include "sysemu.h"
 //~ #include "i2c.h"
 
+// TODO: put in header file
+extern const char *qemu_sprint_backtrace(char *buffer, size_t length);
+
 //~ $2 = {{virtual = 0xf200b000, pfn = 0x2000b, length = 0x1000, type = 0x0}, {virtual = 0xf2201000, pfn = 0x20201, length = 0x1000, type = 0x0}, {virtual = 0xf2215000,
     //~ pfn = 0x20215, length = 0x1000, type = 0x0}, {virtual = 0xf2007000, pfn = 0x20007, length = 0x1000, type = 0x0}, {virtual = 0xf2000000, pfn = 0x20000, length = 0x1000,
     //~ type = 0x0}, {virtual = 0xf2003000, pfn = 0x20003, length = 0x1000, type = 0x0}, {virtual = 0xf2980000, pfn = 0x20980, length = 0x20000, type = 0x0}, {virtual = 0xf2100000,
@@ -31,6 +34,7 @@
 
 #define BCM2708
 #include "hw/pl011.c"
+#include "hw/arm_timer.c"
 
 /* Code copied from Linux arch/arm/mach-bcm2708/include/mach/platform.h. */
 
@@ -274,7 +278,7 @@ typedef struct
 {
     SysBusDevice busdev;
     MemoryRegion iomem;
-    MemoryRegion ic_mem;
+    MemoryRegion armctrl_mem;
     MemoryRegion st_mem;
     BCM2708SystemTimer st;      /* system timer */
     pl011_state uart0;
@@ -359,10 +363,12 @@ static uint32_t bcm2708_dma_read(BCM2708State *s, unsigned offset)
 
 static void bcm2708_dma_write(BCM2708State *s, unsigned offset, uint32_t value)
 {
-    //~ logout("offset=0x%02x, value=0x%04x\n", offset, value);
+    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04x\n",
+    //~        offset, value);
     switch (offset) {
     default:
-        logout("offset=0x%02x, value=0x%04x (TODO)\n", offset, value);
+        logout("offset=0x%02x, value=0x%04x (TODO)\n",
+               offset, value);
     }
 }
 
@@ -376,12 +382,13 @@ static uint64_t bcm2708_ic_read(void *opaque, target_phys_addr_t offset,
     assert(size == 4);
     switch (offset) {
     default:
-        logout("offset=0x%02x, value=0x0000 (TODO)\n", offset);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n",
+               offset);
     }
     return value;
 }
 
-static void bcm2708_ic_write(void *opaque, unsigned offset, uint64_t value,
+static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t value,
                              unsigned size)
 {
     //~ BCM2708State *s = opaque;
@@ -400,7 +407,37 @@ static void bcm2708_ic_write(void *opaque, unsigned offset, uint64_t value,
     case 0x20: /* Disable IRQs 2 */
     case 0x24: /* Disable Basic IRQs */
     default:
-        logout("offset=0x%02x, value=0x%04" PRIx64 " (TODO)\n", offset, value);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (TODO)\n", offset, value);
+    }
+}
+
+static uint64_t bcm2708_armctrl_read(void *opaque, target_phys_addr_t offset,
+                                     unsigned size)
+{
+    //~ BCM2708State *s = opaque;
+    uint32_t value = 0;
+
+    assert(size == 4);
+
+    if (offset < 0x200) {
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n",
+               offset);
+    } else {
+        value = bcm2708_ic_read(opaque, offset - 0x0200, size);
+    }
+
+    return value;
+}
+
+static void bcm2708_armctrl_write(void *opaque, target_phys_addr_t offset,
+                                  uint64_t value, unsigned size)
+{
+    assert(size == 4);
+
+    if (offset < 0x0200) {
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (TODO)\n", offset, value);
+    } else {
+        bcm2708_ic_write(opaque, offset - 0x0200, value, size);
     }
 }
 
@@ -423,10 +460,11 @@ static uint64_t bcm2708_st_read(void *opaque, target_phys_addr_t offset,
         value = s->st.c[(offset - 0x0c) / 4];
         break;
     default:
-        logout("offset=0x%02x, value=0x%04x (TODO)\n", offset, value);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04x (TODO)\n",
+               offset, value);
         return value;
     }
-    logout("offset=0x%02x, value=0x%04x\n", offset, value);
+    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04x\n", offset, value);
     return value;
 }
 
@@ -438,36 +476,18 @@ static void bcm2708_st_write(void *opaque, target_phys_addr_t offset,
     switch (offset) {
     case 0x04: /* CLO */
     case 0x08: /* CHI */
-        logout("offset=0x%02x, value=0x%04" PRIx64 " (ignored)\n",
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (ignored)\n",
                offset, value);
         break;
     case 0x0c ... 0x18: /* C0, C1, C2, C3 */
         s->st.c[(offset - 0x0c) / 4] = value;
-        logout("offset=0x%02x, value=0x%04" PRIx64 " (C%u, TODO)\n",
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (C%" TARGET_PRIuPHYS ", TODO)\n",
                offset, value, (offset - 0x0c) / 4);
         break;
     default:
-        logout("offset=0x%02x, value=0x%04" PRIx64 " (TODO)\n", offset, value);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (TODO)\n", offset, value);
     }
 }
-
-/* ARM SP804 timer with some modifications. */
-
-#if 0
-static void bcm2708_timer0_1_write(BCM2708State *s, unsigned offset,
-                                   uint32_t value)
-{
-    //~ bcm2708_write: Bad register offset 0xb408
-    //~ logout("offset=0x%02x, value=0x%04x\n", offset, value);
-    switch (offset) {
-    case 0x08: /* Control */
-        logout("offset=0x%02x, value=0x%04x (Control, TODO)\n", offset, value);
-        break;
-    default:
-        logout("offset=0x%02x, value=0x%04x (TODO)\n", offset, value);
-    }
-}
-#endif
 
 /* UART 0. */
 
@@ -534,7 +554,7 @@ static uint64_t bcm2708_read(void *opaque, target_phys_addr_t offset,
         value = bcm2708_0_sbm_read(s, IO(offset) - ARMCTRL_0_SBM_BASE);
         break;
     default:
-        logout("offset=0x%02x, value=0x0000 (TODO)\n", offset);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n", offset);
     }
     return value;
 }
@@ -564,14 +584,14 @@ static void bcm2708_write(void *opaque, target_phys_addr_t offset,
         break;
 #endif
     default:
-        logout("offset=0x%02x, value=0x%04x (TODO)\n", offset, (unsigned)value);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (TODO)\n", offset, value);
     }
     //~ bcm2708_update(s);
 }
 
-static const MemoryRegionOps bcm2708_ic_ops = {
-    .read = bcm2708_ic_read,
-    .write = bcm2708_ic_write,
+static const MemoryRegionOps bcm2708_armctrl_ops = {
+    .read = bcm2708_armctrl_read,
+    .write = bcm2708_armctrl_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
@@ -631,12 +651,12 @@ static int bcm2708_init(SysBusDevice *dev)
                           0x1000 + USB_BASE - BCM2708_PERI_BASE);
     sysbus_init_mmio(dev, &s->iomem);
 
-    memory_region_init_io(&s->ic_mem, &bcm2708_ic_ops, s, "bcm2708.ic",
-                          0x1000);
+    memory_region_init_io(&s->armctrl_mem, &bcm2708_armctrl_ops, s, "bcm2708.ic",
+                          0x0400);
     memory_region_add_subregion(&s->iomem,
-                                ARMCTRL_IC_BASE - BCM2708_PERI_BASE,
-                                &s->ic_mem);
-    //~ sysbus_init_mmio(dev, &s->ic_mem);
+                                ARMCTRL_BASE - BCM2708_PERI_BASE,
+                                &s->armctrl_mem);
+    //~ sysbus_init_mmio(dev, &s->armctrl_mem);
 
     memory_region_init_io(&s->st_mem, &bcm2708_st_ops, s, "bcm2708.st",
                           0x1000);
@@ -658,7 +678,17 @@ static int bcm2708_init(SysBusDevice *dev)
     //~ sysbus_create_simple("pl011", 0x07e20100, s->parent[12]);
     //~ sysbus_create_simple("bcm2708.pl011", UART0_BASE, s->parent[12]);
     //~ sysbus_create_simple("sp804", 0x07e00400, s->parent[12]);
-    sysbus_create_simple("sp804", ARMCTRL_TIMER0_1_BASE, s->parent[12]);
+    //~ sysbus_create_simple("sp804", ARMCTRL_TIMER0_1_BASE, s->parent[12]);
+    DeviceState *devState = qdev_create(NULL, "bcm2708.sp804");
+    //~ qdev_prop_set_uint32(dev, "freq0", 150000000);
+    //~ qdev_prop_set_uint32(dev, "freq1", 150000000);
+    qdev_init_nofail(devState);
+    SysBusDevice *busdev = sysbus_from_qdev(devState);
+    //~ sysbus_mmio_map(busdev, 0, ARMCTRL_TIMER0_1_BASE);
+    busdev->mmio[0].addr = ARMCTRL_TIMER0_1_BASE;
+    memory_region_add_subregion(&s->iomem,
+                                ARMCTRL_TIMER0_1_BASE - BCM2708_PERI_BASE,
+                                busdev->mmio[0].memory);
 
     return 0;
 }
