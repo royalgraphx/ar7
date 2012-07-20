@@ -268,7 +268,7 @@ machine_init(raspi_machine_init);
 typedef struct {
     QEMUTimer *timer;
     int64_t expire;
-    uint64_t clock;
+    uint64_t clock;     // initial value  of QEMU timer
     uint32_t dt;
     uint32_t cs;
     uint32_t c[4];
@@ -303,15 +303,10 @@ static const VMStateDescription vmstate_bcm2708 = {
 
 static uint64_t bcm2708_timer_clock(BCM2708State *s)
 {
-    uint64_t cl = s->st.clock;
-    int64_t dt = s->st.expire - qemu_get_clock_us(vm_clock);
-    if (dt < 0) {
-        dt = 0;
-    }
-    cl += s->st.dt - dt;
-    return cl;
+    return qemu_get_clock_us(vm_clock) - s->st.clock;
 }
 
+#if 0
 static void bcm2708_timer_next(BCM2708State *s)
 {
     uint8_t i;
@@ -328,23 +323,42 @@ static void bcm2708_timer_next(BCM2708State *s)
     logout("wait until %" PRId64 " us\n", s->st.expire);
     qemu_mod_timer(s->st.timer, s->st.expire);
 }
+#endif
+
+static void bcm2708_timer_update(BCM2708State *s)
+{
+    uint64_t now = qemu_get_clock_us(vm_clock);
+    uint32_t clo = (uint32_t)(now - s->st.clock);
+    uint32_t dt_min = UINT32_MAX;
+    uint8_t i;
+    for (i = 0; i < 4; i++) {
+        uint32_t dt = s->st.c[i] - clo;
+        if (dt != 0 && dt < dt_min) {
+            dt_min = dt;
+        }
+    }
+    s->st.dt = dt_min;
+    s->st.expire += dt_min;
+    logout("wait %" PRIu32 " us\n", dt_min);
+    qemu_mod_timer(s->st.timer, now + dt_min);
+}
 
 static void bcm2708_timer_tick(void *opaque)
 {
     BCM2708State *s = opaque;
-    uint32_t clo;
+    uint64_t now = qemu_get_clock_us(vm_clock);
+    uint32_t clo = (uint32_t)(now - s->st.clock);
     uint8_t cs = s->st.cs;
     uint8_t i;
     logout("%u us expired\n", s->st.dt);
-    s->st.clock += s->st.dt;
-    clo = (uint32_t)s->st.clock;
     for (i = 0; i < 4; i++) {
         if ((cs ^ (1 << i)) && (s->st.c[i] == clo)) {
             s->st.cs |= (1 << i);
+            logout("raise interrupt for C%u\n", i);
             //~ qemu_irq_lower(s->davint);
         }
     }
-    bcm2708_timer_next(s);
+    bcm2708_timer_update(s);
 }
 
 /* DMA. */
@@ -472,7 +486,10 @@ static void bcm2708_st_write(void *opaque, target_phys_addr_t offset,
                              uint64_t value, unsigned size)
 {
     BCM2708State *s = opaque;
+    unsigned timer_index;
+
     assert(size == 4);
+
     switch (offset) {
     case 0x04: /* CLO */
     case 0x08: /* CHI */
@@ -480,9 +497,11 @@ static void bcm2708_st_write(void *opaque, target_phys_addr_t offset,
                offset, value);
         break;
     case 0x0c ... 0x18: /* C0, C1, C2, C3 */
-        s->st.c[(offset - 0x0c) / 4] = value;
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (C%" TARGET_PRIuPHYS ", TODO)\n",
-               offset, value, (offset - 0x0c) / 4);
+        timer_index = (offset - 0x0c) / 4;
+        s->st.c[timer_index] = value;
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (C%u)\n",
+               offset, value, timer_index);
+        bcm2708_timer_update(s);
         break;
     default:
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (TODO)\n", offset, value);
@@ -672,8 +691,8 @@ static int bcm2708_init(SysBusDevice *dev)
     bcm2708_pl011_arm_init(dev, &s->uart0);
 
     s->st.timer = qemu_new_timer_us(vm_clock, bcm2708_timer_tick, s);
-    s->st.expire = qemu_get_clock_us(vm_clock);
-    bcm2708_timer_next(s);
+    s->st.clock = s->st.expire = qemu_get_clock_us(vm_clock);
+    bcm2708_timer_update(s);
 
     //~ sysbus_create_simple("pl011", 0x07e20100, s->parent[12]);
     //~ sysbus_create_simple("bcm2708.pl011", UART0_BASE, s->parent[12]);
