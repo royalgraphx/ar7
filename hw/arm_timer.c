@@ -248,7 +248,7 @@ static void sp804_write(void *opaque, hwaddr offset,
 {
     sp804_state *s = (sp804_state *)opaque;
 
-    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (timer)\n",
+    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (timer)\n",
            offset, value);
 
     if (offset < 0x20) {
