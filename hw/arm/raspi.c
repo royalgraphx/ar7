@@ -189,8 +189,20 @@ extern const char *qemu_sprint_backtrace(char *buffer, size_t length);
 
 #define SZ_4K   4096
 
-/* Interrupt handling. */
-
+typedef struct {
+    MemoryRegion iomem;
+    qemu_irq irq[MAXIRQNUM];
+    uint32_t irq_basic_pending;
+    uint32_t irq_pending_1;
+    uint32_t irq_pending_2;
+    uint32_t fiq_control;
+    uint32_t enable_irqs_1;
+    uint32_t enable_irqs_2;
+    uint32_t enable_basic_irqs;
+    uint32_t disable_irqs_1;
+    uint32_t disable_irqs_2;
+    uint32_t disable_basic_irqs;
+} BCM2708InterruptController;
 
 typedef struct {
     MemoryRegion iomem;
@@ -203,6 +215,56 @@ typedef struct {
     uint32_t c[4];
     bool active[4];
 } BCM2708SystemTimer;
+
+typedef struct {
+    SysBusDevice busdev;
+    MemoryRegion iomem;
+    BCM2708InterruptController ic;      /* interrupt controller */
+    BCM2708SystemTimer st;              /* system timer */
+    pl011_state uart0;
+    //~ uint32_t level;
+    //~ uint32_t mask;
+    //~ int irq;
+} BCM2708State;
+
+typedef struct {
+    MemoryRegion ram;
+    MemoryRegion ram_alias;
+    BCM2708State *bcm2708;
+    qemu_irq *cpu_pic;
+} RaspberryPi;
+
+static RaspberryPi *rpi;
+
+static void bcm2708_update_irq(void)
+{
+    if (rpi->bcm2708->ic.irq_basic_pending != 0) {
+        qemu_set_irq(rpi->cpu_pic[ARM_PIC_CPU_IRQ], true);
+    } else {
+        qemu_set_irq(rpi->cpu_pic[ARM_PIC_CPU_IRQ], false);
+    }
+}
+
+static void bcm2708_set_irq(unsigned num, bool value)
+{
+    logout("interrupt %u = %u\n", num, value);
+
+    switch (num) {
+    case INTERRUPT_ARM_TIMER ... INTERRUPT_ARASANSDIO:
+        if (value) {
+            rpi->bcm2708->ic.irq_basic_pending |=
+                (1 << (num - INTERRUPT_ARM_TIMER));
+        } else {
+            hw_error("unexpected value for interrupt %u\n", num);
+            rpi->bcm2708->ic.irq_basic_pending &=
+                ~(1 << (num - INTERRUPT_ARM_TIMER));
+        }
+        bcm2708_update_irq();
+        break;
+    default:
+        hw_error("unexpected interrupt %u\n", num);
+    }
+}
 
 static uint64_t bcm2708_timer_clock(BCM2708SystemTimer *st)
 {
@@ -243,39 +305,13 @@ static void bcm2708_timer_tick(void *opaque)
         if (st->active[i] && (cs ^ (1 << i))) {
             st->cs |= (1 << i);
             logout("raise interrupt for C%u\n", i);
-            qemu_set_irq(st->irq, true);
+            bcm2708_set_irq(INTERRUPT_ARM_TIMER, true);
         } else {
             //~ qemu_set_irq(s->parent_irq, false);
         }
     }
     bcm2708_timer_update(st);
 }
-
-typedef struct {
-    MemoryRegion iomem;
-    qemu_irq irq[MAXIRQNUM];
-    uint32_t irq_basic_pending;
-    uint32_t irq_pending_1;
-    uint32_t irq_pending_2;
-    uint32_t fiq_control;
-    uint32_t enable_irqs_1;
-    uint32_t enable_irqs_2;
-    uint32_t enable_basic_irqs;
-    uint32_t disable_irqs_1;
-    uint32_t disable_irqs_2;
-    uint32_t disable_basic_irqs;
-} BCM2708InterruptController;
-
-typedef struct {
-    SysBusDevice busdev;
-    MemoryRegion iomem;
-    BCM2708InterruptController ic;      /* interrupt controller */
-    BCM2708SystemTimer st;              /* system timer */
-    pl011_state uart0;
-    //~ uint32_t level;
-    //~ uint32_t mask;
-    //~ int irq;
-} BCM2708State;
 
 /* DMA. */
 
@@ -307,10 +343,26 @@ static void bcm2708_dma_write(BCM2708State *s, unsigned offset, uint32_t value)
 static uint64_t bcm2708_ic_read(void *opaque, target_phys_addr_t offset,
                                 unsigned size)
 {
-    //~ BCM2708State *s = opaque;
+    BCM2708InterruptController *ic = opaque;
     uint32_t value = 0;
     assert(size == 4);
     switch (offset) {
+    case 0x00:  /* IRQ basic pending */
+        value = ic->irq_basic_pending;
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+               offset, value);
+        break;
+    case 0x04: /* IRQ pending 1 */
+        value = ic->irq_pending_1;
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+               offset, value);
+        break;
+    case 0x08: /* IRQ pending 2 */
+        value = ic->irq_pending_2;
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+               offset, value);
+        break;
+    case 0x0c: /* FIQ control */
     default:
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n",
                offset);
@@ -321,7 +373,7 @@ static uint64_t bcm2708_ic_read(void *opaque, target_phys_addr_t offset,
 static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t value,
                              unsigned size)
 {
-    BCM2708State *s = opaque;
+    BCM2708InterruptController *ic = opaque;
     //~ bcm2708_write: Bad register offset 0xb210
     //~ bcm2708_write           offset=b218
     assert(size == 4);
@@ -333,14 +385,19 @@ static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t v
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
         break;
     case 0x10: /* Enable IRQs 1 */
-        s->ic.enable_irqs_1 = value;
+        ic->enable_irqs_1 |= value;
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable IRQs 1)\n", offset, value);
         break;
     case 0x14: /* Enable IRQs 2 */
     case 0x18: /* Enable Basic IRQs */
     case 0x1c: /* Disable IRQs 1 */
     case 0x20: /* Disable IRQs 2 */
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
+        break;
     case 0x24: /* Disable Basic IRQs */
+        ic->irq_basic_pending &= ~value;
+        bcm2708_update_irq();
+        break;
     default:
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
     }
@@ -349,7 +406,7 @@ static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t v
 static uint64_t bcm2708_armctrl_read(void *opaque, target_phys_addr_t offset,
                                      unsigned size)
 {
-    //~ BCM2708State *s = opaque;
+    BCM2708State *s = opaque;
     uint32_t value = 0;
 
     assert(size == 4);
@@ -358,7 +415,7 @@ static uint64_t bcm2708_armctrl_read(void *opaque, target_phys_addr_t offset,
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n",
                offset);
     } else {
-        value = bcm2708_ic_read(opaque, offset - 0x0200, size);
+        value = bcm2708_ic_read(&s->ic, offset - 0x0200, size);
     }
 
     return value;
@@ -367,12 +424,14 @@ static uint64_t bcm2708_armctrl_read(void *opaque, target_phys_addr_t offset,
 static void bcm2708_armctrl_write(void *opaque, target_phys_addr_t offset,
                                   uint64_t value, unsigned size)
 {
+    BCM2708State *s = opaque;
+
     assert(size == 4);
 
     if (offset < 0x0200) {
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
     } else {
-        bcm2708_ic_write(opaque, offset - 0x0200, value, size);
+        bcm2708_ic_write(&s->ic, offset - 0x0200, value, size);
     }
 }
 
@@ -560,7 +619,7 @@ static int bcm2708_init(SysBusDevice *dev)
 
     logout("\n");
 
-    //~ bcm2708 = s;
+    rpi->bcm2708 = s;
 
     //~ qdev_init_gpio_in(&dev->qdev, bcm2708_set_irq, 32);
     for (i = 0; i < 2; i++) {   // TODO
@@ -635,6 +694,8 @@ static void bcm2708_class_init(ObjectClass *klass, void *data)
     k->init = bcm2708_init;
     dc->no_user = 1;
     dc->vmsd = &vmstate_bcm2708;
+    //~ dc->props = bcm2708_properties;
+    //~ dc->reset = bcm2708_reset;
 }
 
 static TypeInfo bcm2708_info = {
@@ -665,12 +726,10 @@ static void raspi_init(ram_addr_t ram_size,
 {
     ARMCPU *cpu;
     MemoryRegion *sysmem = get_system_memory();
-    MemoryRegion *ram = g_new(MemoryRegion, 1);
-    MemoryRegion *ram_alias = g_new(MemoryRegion, 1);
-    //~ DeviceState *sysctl;
-    qemu_irq *cpu_pic;
 
     logout("\n");
+
+    rpi = g_new(RaspberryPi, 1);
 
     if (!cpu_model) {
         cpu_model = "arm1176";
@@ -684,22 +743,24 @@ static void raspi_init(ram_addr_t ram_size,
     /* Ignore the RAM size argument and use always the standard size. */
     ram_size = 256 * MiB;
 
-    memory_region_init_ram(ram, "raspi.ram", ram_size);
-    vmstate_register_ram_global(ram);
+    memory_region_init_ram(&rpi->ram, "raspi.ram", ram_size);
+    vmstate_register_ram_global(&rpi->ram);
     /* ??? RAM should repeat to fill physical memory space.  */
-    memory_region_add_subregion(sysmem, BCM2708_SDRAM_BASE, ram);
+    memory_region_add_subregion(sysmem, BCM2708_SDRAM_BASE, &rpi->ram);
 
-    memory_region_init_alias(ram_alias, "ram.alias", ram, 0, ram_size);
-    memory_region_add_subregion(sysmem, 0xc0000000, ram_alias);
+    memory_region_init_alias(&rpi->ram_alias, "ram.alias",
+                             &rpi->ram, 0, ram_size);
+    memory_region_add_subregion(sysmem, 0xc0000000, &rpi->ram_alias);
 
-    cpu_pic = arm_pic_init_cpu(cpu);
+    rpi->cpu_pic = arm_pic_init_cpu(cpu);
 
-    DeviceState *dev =
+    //~ DeviceState *sysctl =
     sysbus_create_varargs("bcm2708", BCM2708_PERI_BASE,
-                          cpu_pic[ARM_PIC_CPU_IRQ], cpu_pic[ARM_PIC_CPU_FIQ],
+                          rpi->cpu_pic[ARM_PIC_CPU_IRQ],
+                          rpi->cpu_pic[ARM_PIC_CPU_FIQ],
                           NULL);
 
-    sysbus_connect_irq(sysbus_from_qdev(dev), 0, cpu_pic[ARM_PIC_CPU_IRQ]);
+    //~ sysbus_connect_irq(sysbus_from_qdev(sysctl), 0, rpi->cpu_pic[ARM_PIC_CPU_IRQ]);
 
     //~ sysctl = qdev_create(NULL, "realview_sysctl");
     //~ qdev_prop_set_uint32(sysctl, "sys_id", 0x41007004);
