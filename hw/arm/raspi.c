@@ -154,7 +154,6 @@ extern const char *qemu_sprint_backtrace(char *buffer, size_t length);
 #define INTERRUPT_UART                 (ARM_IRQ0_BASE + 19)
 #define INTERRUPT_ARASANSDIO           (ARM_IRQ0_BASE + 20)
 
-// TODO: 21?
 #define MAXIRQNUM                      (32 + 32 + 20)
 #define MAXFIQNUM                      (32 + 32 + 20)
 
@@ -194,6 +193,7 @@ extern const char *qemu_sprint_backtrace(char *buffer, size_t length);
 
 
 typedef struct {
+    MemoryRegion iomem;
     QEMUTimer *timer;
     qemu_irq irq;
     uint64_t clock;     // initial value  of QEMU timer
@@ -252,6 +252,8 @@ static void bcm2708_timer_tick(void *opaque)
 }
 
 typedef struct {
+    MemoryRegion iomem;
+    qemu_irq irq[MAXIRQNUM];
     uint32_t irq_basic_pending;
     uint32_t irq_pending_1;
     uint32_t irq_pending_2;
@@ -267,15 +269,12 @@ typedef struct {
 typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
-    MemoryRegion armctrl_mem;
-    MemoryRegion st_mem;
     BCM2708InterruptController ic;      /* interrupt controller */
     BCM2708SystemTimer st;              /* system timer */
     pl011_state uart0;
     //~ uint32_t level;
     //~ uint32_t mask;
-    qemu_irq parent[32];
-    int irq;
+    //~ int irq;
 } BCM2708State;
 
 /* DMA. */
@@ -564,29 +563,36 @@ static int bcm2708_init(SysBusDevice *dev)
     //~ bcm2708 = s;
 
     //~ qdev_init_gpio_in(&dev->qdev, bcm2708_set_irq, 32);
-    for (i = 0; i < 32; i++) {
-        sysbus_init_irq(dev, &s->parent[i]);
+    for (i = 0; i < 2; i++) {   // TODO
+        sysbus_init_irq(dev, &s->ic.irq[i]);
     }
-    s->irq = 31;
+    //~ s->irq = 31;
 
+    /* BCM2708. */
     memory_region_init_io(&s->iomem, &bcm2708_ops, s, "bcm2708",
-                          //~ ARMCTRL_BASE - BCM2708_PERI_BASE);
-                          0x1000 + USB_BASE - BCM2708_PERI_BASE);
+                          USB_BASE + 0x1000 - BCM2708_PERI_BASE);
     sysbus_init_mmio(dev, &s->iomem);
 
-    memory_region_init_io(&s->armctrl_mem, &bcm2708_armctrl_ops, s, "bcm2708.ic",
+    /* Interrupt controller. */
+    memory_region_init_io(&s->ic.iomem, &bcm2708_armctrl_ops, s, "bcm2708.ic",
                           0x0400);
     memory_region_add_subregion(&s->iomem,
                                 ARMCTRL_BASE - BCM2708_PERI_BASE,
-                                &s->armctrl_mem);
-    //~ sysbus_init_mmio(dev, &s->armctrl_mem);
+                                &s->ic.iomem);
 
-    memory_region_init_io(&s->st_mem, &bcm2708_st_ops, &s->st, "bcm2708.st",
+    /* System timer. */
+    memory_region_init_io(&s->st.iomem, &bcm2708_st_ops, &s->st, "bcm2708.st",
                           0x1000);
     memory_region_add_subregion(&s->iomem,
                                 ST_BASE - BCM2708_PERI_BASE,
-                                &s->st_mem);
+                                &s->st.iomem);
+    s->st.timer = qemu_new_timer_us(vm_clock, bcm2708_timer_tick, &s->st);
+    s->st.clock = s->st.expire = qemu_get_clock_us(vm_clock);
+    sysbus_init_irq(dev, &s->st.irq);
+    bcm2708_timer_update(&s->st);
 
+    /* UART0. */
+    //~ sysbus_create_simple("bcm2708.pl011", UART0_BASE, s->parent[12]);
     memory_region_init_io(&s->uart0.iomem, &pl011_ops, s, "bcm2708.uart0",
                           0x1000);
     memory_region_add_subregion(&s->iomem,
@@ -594,15 +600,7 @@ static int bcm2708_init(SysBusDevice *dev)
                                 &s->uart0.iomem);
     bcm2708_pl011_arm_init(dev, &s->uart0);
 
-    s->st.timer = qemu_new_timer_us(vm_clock, bcm2708_timer_tick, &s->st);
-    s->st.clock = s->st.expire = qemu_get_clock_us(vm_clock);
-    sysbus_init_irq(dev, &s->st.irq);
-    bcm2708_timer_update(&s->st);
-
-    //~ sysbus_create_simple("pl011", 0x07e20100, s->parent[12]);
-    //~ sysbus_create_simple("bcm2708.pl011", UART0_BASE, s->parent[12]);
-    //~ sysbus_create_simple("sp804", 0x07e00400, s->parent[12]);
-    //~ sysbus_create_simple("sp804", ARMCTRL_TIMER0_1_BASE, s->parent[12]);
+    /* Timer 0 and 1. */
     DeviceState *devState = qdev_create(NULL, "bcm2708.sp804");
     //~ qdev_prop_set_uint32(dev, "freq0", 150000000);
     //~ qdev_prop_set_uint32(dev, "freq1", 150000000);
@@ -612,7 +610,7 @@ static int bcm2708_init(SysBusDevice *dev)
     memory_region_add_subregion(&s->iomem,
                                 ARMCTRL_TIMER0_1_BASE - BCM2708_PERI_BASE,
                                 busdev->mmio[0].memory);
-    sysbus_init_irq(busdev, &s->parent[0]);
+    sysbus_init_irq(busdev, &s->ic.irq[0]);
 
     return 0;
 }
@@ -696,12 +694,12 @@ static void raspi_init(ram_addr_t ram_size,
 
     cpu_pic = arm_pic_init_cpu(cpu);
 
-    //~ DeviceState *dev =
+    DeviceState *dev =
     sysbus_create_varargs("bcm2708", BCM2708_PERI_BASE,
                           cpu_pic[ARM_PIC_CPU_IRQ], cpu_pic[ARM_PIC_CPU_FIQ],
                           NULL);
 
-    //~ sysbus_connect_irq(busdev, 0, cpu_pic[0]);
+    sysbus_connect_irq(sysbus_from_qdev(dev), 0, cpu_pic[ARM_PIC_CPU_IRQ]);
 
     //~ sysctl = qdev_create(NULL, "realview_sysctl");
     //~ qdev_prop_set_uint32(sysctl, "sys_id", 0x41007004);
