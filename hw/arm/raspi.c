@@ -199,9 +199,9 @@ typedef struct {
     uint32_t enable_irqs_1;
     uint32_t enable_irqs_2;
     uint32_t enable_basic_irqs;
-    uint32_t disable_irqs_1;
-    uint32_t disable_irqs_2;
-    uint32_t disable_basic_irqs;
+    //~ uint32_t disable_irqs_1;
+    //~ uint32_t disable_irqs_2;
+    //~ uint32_t disable_basic_irqs;
 } BCM2708InterruptController;
 
 typedef struct {
@@ -238,24 +238,39 @@ static RaspberryPi *rpi;
 
 static void bcm2708_update_irq(void)
 {
-    if (rpi->bcm2708->ic.irq_basic_pending != 0) {
-        qemu_set_irq(rpi->cpu_pic[ARM_PIC_CPU_IRQ], true);
-    } else {
-        qemu_set_irq(rpi->cpu_pic[ARM_PIC_CPU_IRQ], false);
-    }
+    BCM2708InterruptController *ic = &rpi->bcm2708->ic;
+    bool pic_irq = (ic->irq_basic_pending & ic->enable_basic_irqs) ||
+                   (ic->irq_pending_1 & ic->enable_irqs_1) ||
+                   (ic->irq_pending_2 & ic->enable_irqs_2);
+    //~ logout("pic irq = %u\n", pic_irq);
+    qemu_set_irq(rpi->cpu_pic[ARM_PIC_CPU_IRQ], pic_irq);
 }
 
 static void bcm2708_set_irq(unsigned num, bool value)
 {
-    logout("interrupt %u = %u\n", num, value);
+    //~ logout("interrupt %u = %u\n", num, value);
 
     switch (num) {
+    case INTERRUPT_TIMER0 ... INTERRUPT_VPUDMA:
+        if (value) {
+            rpi->bcm2708->ic.irq_pending_1 |=
+                (1 << (num - INTERRUPT_TIMER0));
+        } else {
+            rpi->bcm2708->ic.irq_pending_1 &=
+                ~(1 << (num - INTERRUPT_TIMER0));
+        }
+        if (rpi->bcm2708->ic.irq_pending_1) {
+            rpi->bcm2708->ic.irq_basic_pending |= (1 << 8);
+        } else {
+            rpi->bcm2708->ic.irq_basic_pending &= ~(1 << 8);
+        }
+        bcm2708_update_irq();
+        break;
     case INTERRUPT_ARM_TIMER ... INTERRUPT_ARASANSDIO:
         if (value) {
             rpi->bcm2708->ic.irq_basic_pending |=
                 (1 << (num - INTERRUPT_ARM_TIMER));
         } else {
-            hw_error("unexpected value for interrupt %u\n", num);
             rpi->bcm2708->ic.irq_basic_pending &=
                 ~(1 << (num - INTERRUPT_ARM_TIMER));
         }
@@ -289,8 +304,20 @@ static void bcm2708_timer_update(BCM2708SystemTimer *st)
     }
     st->dt = dt_min;
     st->expire = now + dt_min;
-    logout("wait %" PRIu32 " µs\n", dt_min);
+    //~ logout("wait %" PRIu32 " µs\n", dt_min);
     qemu_mod_timer(st->timer, st->expire);
+}
+
+static void bcm2708_timer_irq(BCM2708SystemTimer *st)
+{
+    uint8_t i;
+    for (i = 0; i < 4; i++) {
+        if (st->cs & (1 << i)) {
+            bcm2708_set_irq(INTERRUPT_TIMER0 + i, true);
+        } else {
+            bcm2708_set_irq(INTERRUPT_TIMER0 + i, false);
+        }
+    }
 }
 
 static void bcm2708_timer_tick(void *opaque)
@@ -300,12 +327,12 @@ static void bcm2708_timer_tick(void *opaque)
     //~ uint32_t clo = (uint32_t)(now - st->clock);
     uint8_t cs = st->cs;
     uint8_t i;
-    logout("%u µs expired\n", st->dt);
+    //~ logout("%u µs expired\n", st->dt);
     for (i = 0; i < 4; i++) {
         if (st->active[i] && (cs ^ (1 << i))) {
             st->cs |= (1 << i);
-            logout("raise interrupt for C%u\n", i);
-            bcm2708_set_irq(INTERRUPT_ARM_TIMER, true);
+            //~ logout("raise interrupt for C%u\n", i);
+            bcm2708_set_irq(INTERRUPT_TIMER0 + i, true);
         } else {
             //~ qemu_set_irq(s->parent_irq, false);
         }
@@ -349,13 +376,13 @@ static uint64_t bcm2708_ic_read(void *opaque, target_phys_addr_t offset,
     switch (offset) {
     case 0x00:  /* IRQ basic pending */
         value = ic->irq_basic_pending;
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
-               offset, value);
+        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+               //~ offset, value);
         break;
     case 0x04: /* IRQ pending 1 */
         value = ic->irq_pending_1;
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
-               offset, value);
+        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+               //~ offset, value);
         break;
     case 0x08: /* IRQ pending 2 */
         value = ic->irq_pending_2;
@@ -386,16 +413,27 @@ static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t v
         break;
     case 0x10: /* Enable IRQs 1 */
         ic->enable_irqs_1 |= value;
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable IRQs 1)\n", offset, value);
+        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable IRQs 1)\n", offset, value);
         break;
     case 0x14: /* Enable IRQs 2 */
+        ic->enable_irqs_2 |= value;
+        break;
     case 0x18: /* Enable Basic IRQs */
+        ic->enable_basic_irqs |= value;
+        break;
     case 0x1c: /* Disable IRQs 1 */
+        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (disable)\n", offset, value);
+        ic->enable_irqs_1 &= ~value;
+        bcm2708_update_irq();
+        break;
     case 0x20: /* Disable IRQs 2 */
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (disable)\n", offset, value);
+        ic->enable_irqs_2 &= ~value;
+        bcm2708_update_irq();
         break;
     case 0x24: /* Disable Basic IRQs */
-        ic->irq_basic_pending &= ~value;
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (disable)\n", offset, value);
+        ic->enable_basic_irqs &= ~value;
         bcm2708_update_irq();
         break;
     default:
@@ -449,16 +487,17 @@ static uint64_t bcm2708_st_read(void *opaque, target_phys_addr_t offset,
         break;
     case 0x08: /* CHI */
         value = (uint32_t)(bcm2708_timer_clock(st) >> 32);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n", offset, value);
         break;
     case 0x0c ... 0x18: /* C0, C1, C2, C3 */
         value = st->c[(offset - 0x0c) / 4];
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n", offset, value);
         break;
     default:
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x (TODO)\n",
                offset, value);
         return value;
     }
-    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n", offset, value);
     return value;
 }
 
@@ -471,6 +510,12 @@ static void bcm2708_st_write(void *opaque, target_phys_addr_t offset,
     assert(size == 4);
 
     switch (offset) {
+    case 0x00: /* CS */
+        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (CS)\n",
+               //~ offset, value);
+        st->cs &= ~value;
+        bcm2708_timer_irq(st);
+        break;
     case 0x04: /* CLO */
     case 0x08: /* CHI */
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (ignored)\n",
@@ -479,8 +524,8 @@ static void bcm2708_st_write(void *opaque, target_phys_addr_t offset,
     case 0x0c ... 0x18: /* C0, C1, C2, C3 */
         timer_index = (offset - 0x0c) / 4;
         st->c[timer_index] = value;
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (C%u)\n",
-               offset, value, timer_index);
+        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (C%u)\n",
+               //~ offset, value, timer_index);
         bcm2708_timer_update(st);
         break;
     default:
@@ -523,8 +568,18 @@ static uint32_t bcm2708_0_sbm_read(BCM2708State *s, unsigned offset)
         logout("offset=0x%02x, value=0x%08x (TODO)\n", offset, value);
         return value;
     }
-    logout("offset=0x%02x, value=0x%08x\n", offset, value);
+    //~ logout("offset=0x%02x, value=0x%08x\n", offset, value);
     return value;
+}
+
+static uint32_t bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
+                                    uint32_t value)
+{
+    switch (offset) {
+    default:
+        logout("offset=0x%02x, value=0x%08x (TODO)\n", offset, value);
+        return value;
+    }
 }
 
 #define IO(offset) (offset + BCM2708_PERI_BASE)
@@ -563,6 +618,9 @@ static void bcm2708_write(void *opaque, target_phys_addr_t offset,
     switch (IO(offset)) {
     case DMA_BASE ... DMA_BASE + SZ_4K - 1:
         bcm2708_dma_write(s, IO(offset) - DMA_BASE, value);
+        break;
+    case ARMCTRL_0_SBM_BASE ... ARMCTRL_0_SBM_BASE + 0xa0:
+        value = bcm2708_0_sbm_write(s, IO(offset) - ARMCTRL_0_SBM_BASE, value);
         break;
     default:
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
