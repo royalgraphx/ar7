@@ -65,11 +65,20 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
     pl011_state *s = (pl011_state *)opaque;
     uint32_t c;
 
-    logout("offset=0x%02" TARGET_PRIxPHYS " (UART0)\n", offset);
+    logout("offset=0x%02" TARGET_PRIxPHYS " (UART0) %s\n", offset,
+           qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
 
     if (offset >= 0xfe0 && offset < 0x1000) {
+        logout("offset=0x%02" TARGET_PRIxPHYS ". value=0x%08x (UART0) %s\n",
+               offset, s->id[(offset - 0xfe0) >> 2],
+               qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
+
         return s->id[(offset - 0xfe0) >> 2];
     }
+
+    logout("offset=0x%02" TARGET_PRIxPHYS " (UART0) %s\n", offset,
+           qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
+
     switch (offset >> 2) {
     case 0: /* UARTDR */
         s->flags &= ~PL011_FLAG_RXFF;
@@ -85,9 +94,7 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
         if (s->read_count == s->read_trigger - 1)
             s->int_level &= ~ PL011_INT_RX;
         pl011_update(s);
-        if (s->chr) {
-            qemu_chr_accept_input(s->chr);
-        }
+        qemu_chr_accept_input(s->chr);
         return c;
     case 1: /* UARTCR */
         return 0;
@@ -140,8 +147,8 @@ static void pl011_write(void *opaque, hwaddr offset,
     pl011_state *s = (pl011_state *)opaque;
     unsigned char ch;
 
-    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (UART0)\n",
-           offset, value);
+    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (UART0) %s\n",
+           offset, value, qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
 
     switch (offset >> 2) {
     case 0: /* UARTDR */

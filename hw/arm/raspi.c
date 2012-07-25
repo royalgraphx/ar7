@@ -24,6 +24,8 @@
 // TODO: put in header file
 extern const char *qemu_sprint_backtrace(char *buffer, size_t length);
 
+static char bt_buffer[256];
+
 //~ $2 = {{virtual = 0xf200b000, pfn = 0x2000b, length = 0x1000, type = 0x0}, {virtual = 0xf2201000, pfn = 0x20201, length = 0x1000, type = 0x0}, {virtual = 0xf2215000,
     //~ pfn = 0x20215, length = 0x1000, type = 0x0}, {virtual = 0xf2007000, pfn = 0x20007, length = 0x1000, type = 0x0}, {virtual = 0xf2000000, pfn = 0x20000, length = 0x1000,
     //~ type = 0x0}, {virtual = 0xf2003000, pfn = 0x20003, length = 0x1000, type = 0x0}, {virtual = 0xf2980000, pfn = 0x20980, length = 0x20000, type = 0x0}, {virtual = 0xf2100000,
@@ -548,10 +550,11 @@ static uint32_t bcm2708_uart0_read(BCM2708State *s, unsigned offset)
     uint32_t value = 0;
     switch (offset) {
     default:
-        logout("offset=0x%02x, value=0x%08x (TODO)\n", offset, value);
+        logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
+               qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
         return value;
     }
-    logout("offset=0x%02x, value=0x%08x\n", offset, value);
+    //~ logout("offset=0x%02x, value=0x%08x\n", offset, value);
     return value;
 }
 
@@ -564,6 +567,9 @@ static uint32_t bcm2708_0_sbm_read(BCM2708State *s, unsigned offset)
     //~ RPI     bcm2708_write           offset=b8a0
     uint32_t value = 0;
     switch (offset) {
+    case  0x98:         // Status read
+    case  0x9c:         // Config r/w
+    case  0xa0:         // ARM_0_MAIL1_RD
     default:
         logout("offset=0x%02x, value=0x%08x (TODO)\n", offset, value);
         return value;
@@ -710,7 +716,7 @@ static int bcm2708_init(SysBusDevice *dev)
 
     /* UART0. */
     //~ sysbus_create_simple("bcm2708.pl011", UART0_BASE, s->parent[12]);
-    memory_region_init_io(&s->uart0.iomem, &pl011_ops, s, "bcm2708.uart0",
+    memory_region_init_io(&s->uart0.iomem, &pl011_ops, &s->uart0, "bcm2708.uart0",
                           0x1000);
     memory_region_add_subregion(&s->iomem,
                                 UART0_BASE - BCM2708_PERI_BASE,
