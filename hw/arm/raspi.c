@@ -9,6 +9,8 @@
  * works (partially as of 2012-07) with the Linux BCM2708 code.
  *
  * http://infocenter.arm.com/help/topic/com.arm.doc.ddi0183g/DDI0183G_uart_pl011_r1p5_trm.pdf
+ * http://elinux.org/RPi_Framebuffer
+ * https://github.com/raspberrypi/firmware/wiki/Mailboxes
  *
  */
 
@@ -185,6 +187,29 @@ static char bt_buffer[256];
 #define PM_RSTC_WRCFG_FULL_RESET       0x00000020
 #define PM_RSTC_RESET                  0x00000102
 
+/* Code copied from Linux arch/arm/mach-bcm2708/include/mach/arm_control.h. */
+
+/*  Mailbox flags. Valid for all owners */
+
+/* Mailbox status register (...0x98) */
+#define ARM_MS_FULL       0x80000000
+#define ARM_MS_EMPTY      0x40000000
+#define ARM_MS_LEVEL      0x400000FF /* Max. value depdnds on mailbox depth parameter */
+
+/* MAILBOX config/status register (...0x9C) */
+/* ANY write to this register clears the error bits! */
+#define ARM_MC_IHAVEDATAIRQEN    0x00000001 /* mailbox irq enable:  has data */
+#define ARM_MC_IHAVESPACEIRQEN   0x00000002 /* mailbox irq enable:  has space */
+#define ARM_MC_OPPISEMPTYIRQEN   0x00000004 /* mailbox irq enable: Opp. is empty */
+#define ARM_MC_MAIL_CLEAR        0x00000008 /* mailbox clear write 1, then  0 */
+#define ARM_MC_IHAVEDATAIRQPEND  0x00000010 /* mailbox irq pending:  has space */
+#define ARM_MC_IHAVESPACEIRQPEND 0x00000020 /* mailbox irq pending: Opp. is empty */
+#define ARM_MC_OPPISEMPTYIRQPEND 0x00000040 /* mailbox irq pending */
+/* Bit 7 is unused */
+#define ARM_MC_ERRNOOWN   0x00000100 /* error : none owner read from mailbox */
+#define ARM_MC_ERROVERFLW 0x00000200 /* error : write to fill mailbox */
+#define ARM_MC_ERRUNDRFLW 0x00000400 /* error : read from empty mailbox */
+
 /* Linux code ends here. */
 
 #define SZ_4K   4096
@@ -245,7 +270,9 @@ static void bcm2708_update_irq(void)
 
 static void bcm2708_set_irq(unsigned num, bool value)
 {
-    //~ logout("interrupt %u = %u\n", num, value);
+    if (num == INTERRUPT_ARM_MAILBOX) {
+        logout("interrupt %u = %u\n", num, value);
+    }
 
     switch (num) {
     case INTERRUPT_TIMER0 ... INTERRUPT_VPUDMA:
@@ -409,13 +436,16 @@ static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t v
         break;
     case 0x10: /* Enable IRQs 1 */
         ic->enable_irqs_1 |= value;
-        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable IRQs 1)\n", offset, value);
+        if (value != 8)
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable IRQs 1)\n", offset, value);
         break;
     case 0x14: /* Enable IRQs 2 */
         ic->enable_irqs_2 |= value;
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable IRQs 2)\n", offset, value);
         break;
     case 0x18: /* Enable Basic IRQs */
         ic->enable_basic_irqs |= value;
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable Basic IRQs)\n", offset, value);
         break;
     case 0x1c: /* Disable IRQs 1 */
         //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (disable)\n", offset, value);
@@ -423,12 +453,12 @@ static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t v
         bcm2708_update_irq();
         break;
     case 0x20: /* Disable IRQs 2 */
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (disable)\n", offset, value);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Disable IRQs 2)\n", offset, value);
         ic->enable_irqs_2 &= ~value;
         bcm2708_update_irq();
         break;
     case 0x24: /* Disable Basic IRQs */
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (disable)\n", offset, value);
+        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Disable Basic IRQs)\n", offset, value);
         ic->enable_basic_irqs &= ~value;
         bcm2708_update_irq();
         break;
@@ -544,28 +574,66 @@ static uint32_t bcm2708_uart0_read(BCM2708State *s, unsigned offset)
     return value;
 }
 
+static bool mailbox_empty;
+static unsigned mailbox_value;
+//~ static uint8_t mailbox[] = { 1 };
+//~ static uint8_t mailbox_index;
+#define MAILBOX_SIZE (sizeof(mailbox) / sizeof(mailbox[0]))
+
 static uint32_t bcm2708_0_sbm_read(BCM2708State *s, unsigned offset)
 {
     uint32_t value = 0;
     switch (offset) {
-    case  0x98:         // Status read
-    case  0x9c:         // Config r/w
-    case  0xa0:         // ARM_0_MAIL1_RD
+    case 0x80:          // ARM_0_MAIL0_RD
+        if (!mailbox_empty) {
+            value = mailbox_value;
+            bcm2708_set_irq(INTERRUPT_ARM_MAILBOX, false);
+            mailbox_empty = true;
+        }
+        logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL0_RD)\n", offset, value);
+        break;
+    case 0x98:          // ARM_0_MAIL0_STA Status read
+        if (mailbox_empty) {
+            value |= ARM_MS_EMPTY;
+        }
+        // TODO: Missing emulation of ARM_MS_FULL for mailbox writes.
+        logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL0_STA)\n", offset, value);
+        break;
+    case 0x9c:          // ARM_0_MAIL0_CNF Config
+    case 0xa0:          // ARM_0_MAIL1_WRT
     default:
-        logout("offset=0x%02x, value=0x%08x (TODO)\n", offset, value);
+        logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
+               qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
         return value;
     }
     //~ logout("offset=0x%02x, value=0x%08x\n", offset, value);
     return value;
 }
 
-static uint32_t bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
-                                    uint32_t value)
+//~ Mailbox Peek  Read  Write  Status  Sender  Config
+//~    0    0x10  0x00  0x20   0x18    0x14    0x1C
+//~    1    0x20
+
+static void bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
+                                uint32_t value)
 {
     switch (offset) {
+    case 0x9c:          // Config
+        if (value == ARM_MC_IHAVEDATAIRQEN) {
+            logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL0_CNF)\n", offset, value);
+            //~ bcm2708_set_irq(INTERRUPT_ARM_MAILBOX, true);
+        } else {
+            logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL0_CNF, TODO)\n", offset, value);
+        }
+        /* TODO: Clear error bits. */
+        break;
+    case 0xa0:          // ARM_0_MAIL1_WRT
+        logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT)\n", offset, value);
+        mailbox_empty = false;
+        bcm2708_set_irq(INTERRUPT_ARM_MAILBOX, true);
+        break;
     default:
         logout("offset=0x%02x, value=0x%08x (TODO)\n", offset, value);
-        return value;
     }
 }
 
@@ -607,7 +675,7 @@ static void bcm2708_write(void *opaque, target_phys_addr_t offset,
         bcm2708_dma_write(s, IO(offset) - DMA_BASE, value);
         break;
     case ARMCTRL_0_SBM_BASE ... ARMCTRL_0_SBM_BASE + 0xa0:
-        value = bcm2708_0_sbm_write(s, IO(offset) - ARMCTRL_0_SBM_BASE, value);
+        bcm2708_0_sbm_write(s, IO(offset) - ARMCTRL_0_SBM_BASE, value);
         break;
     default:
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
@@ -875,4 +943,14 @@ pi@raspberrypi ~ $ cat /proc/iomem
 20804000-208040ff : bcm2708_i2c.1
 20980000-2099ffff : bcm2708_usb
   20980000-2099ffff : dwc_otg
+
+TODO:
+
+arch_hw_breakpoint_init - keine Debug-Architektur
+
+
+mailbox0 from GPU to ARM
+mailbox1 from ARM to GPU
+
+
 #endif
