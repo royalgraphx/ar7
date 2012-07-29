@@ -7,6 +7,9 @@
  *
  * This very basic emulation of Broadcom's BCM2835 media processor
  * works (partially as of 2012-07) with the Linux BCM2708 code.
+ *
+ * http://infocenter.arm.com/help/topic/com.arm.doc.ddi0183g/DDI0183G_uart_pl011_r1p5_trm.pdf
+ *
  */
 
 #include "qemu-common.h"
@@ -25,11 +28,6 @@
 extern const char *qemu_sprint_backtrace(char *buffer, size_t length);
 
 static char bt_buffer[256];
-
-//~ $2 = {{virtual = 0xf200b000, pfn = 0x2000b, length = 0x1000, type = 0x0}, {virtual = 0xf2201000, pfn = 0x20201, length = 0x1000, type = 0x0}, {virtual = 0xf2215000,
-    //~ pfn = 0x20215, length = 0x1000, type = 0x0}, {virtual = 0xf2007000, pfn = 0x20007, length = 0x1000, type = 0x0}, {virtual = 0xf2000000, pfn = 0x20000, length = 0x1000,
-    //~ type = 0x0}, {virtual = 0xf2003000, pfn = 0x20003, length = 0x1000, type = 0x0}, {virtual = 0xf2980000, pfn = 0x20980, length = 0x20000, type = 0x0}, {virtual = 0xf2100000,
-    //~ pfn = 0x20100, length = 0x1000, type = 0x0}, {virtual = 0xf2200000, pfn = 0x20200, length = 0x1000, type = 0x0}}
 
 #define logout(fmt, ...) \
     fprintf(stderr, "RPI\t%-24s" fmt, __func__, ##__VA_ARGS__)
@@ -201,9 +199,6 @@ typedef struct {
     uint32_t enable_irqs_1;
     uint32_t enable_irqs_2;
     uint32_t enable_basic_irqs;
-    //~ uint32_t disable_irqs_1;
-    //~ uint32_t disable_irqs_2;
-    //~ uint32_t disable_basic_irqs;
 } BCM2708InterruptController;
 
 typedef struct {
@@ -403,8 +398,7 @@ static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t v
                              unsigned size)
 {
     BCM2708InterruptController *ic = opaque;
-    //~ bcm2708_write: Bad register offset 0xb210
-    //~ bcm2708_write           offset=b218
+
     assert(size == 4);
     switch (offset) {
     case 0x00: /* IRQ basic pending */
@@ -539,14 +533,6 @@ static void bcm2708_st_write(void *opaque, target_phys_addr_t offset,
 
 static uint32_t bcm2708_uart0_read(BCM2708State *s, unsigned offset)
 {
-    //~ RPI     bcm2708_read            offset=201fe0
-    //~ RPI     bcm2708_read            offset=201fe4
-    //~ RPI     bcm2708_read            offset=201fe8
-    //~ RPI     bcm2708_read            offset=201fec
-    //~ RPI     bcm2708_read            offset=201ff0
-    //~ RPI     bcm2708_read            offset=201ff4
-    //~ RPI     bcm2708_read            offset=201ff8
-    //~ RPI     bcm2708_read            offset=201ffc
     uint32_t value = 0;
     switch (offset) {
     default:
@@ -560,11 +546,6 @@ static uint32_t bcm2708_uart0_read(BCM2708State *s, unsigned offset)
 
 static uint32_t bcm2708_0_sbm_read(BCM2708State *s, unsigned offset)
 {
-    //~ RPI     bcm2708_write           offset=b89c
-    //~ RPI     bcm2708_read            offset=b898
-    //~ RPI     bcm2708_write           offset=b8a0
-    //~ RPI     bcm2708_read            offset=b898
-    //~ RPI     bcm2708_write           offset=b8a0
     uint32_t value = 0;
     switch (offset) {
     case  0x98:         // Status read
@@ -860,3 +841,38 @@ static void raspi_machine_init(void)
 }
 
 machine_init(raspi_machine_init);
+
+#if 0
+
+pi@raspberrypi ~ $ cat /proc/interrupts
+           CPU0
+  3:     210938   ARMCTRL  BCM2708 Timer Tick
+ 52:          0   ARMCTRL  BCM2708 GPIO catchall handler
+ 65:          5   ARMCTRL  ARM Mailbox IRQ
+ 66:          1   ARMCTRL  VCHIQ doorbell
+ 75:   15792842   ARMCTRL  dwc_otg, dwc_otg_hcd:usb1
+ 77:       8921   ARMCTRL  bcm2708_sdhci (dma)
+ 83:         20   ARMCTRL  uart-pl011
+ 84:      11172   ARMCTRL  mmc0
+Err:          0
+
+pi@raspberrypi ~ $ cat /proc/iomem
+00000000-0bffffff : System RAM
+  00008000-003adfff : Kernel text
+  003cc000-0043c397 : Kernel data
+20000000-20000fff : bcm2708_vcio
+20003000-20003fff : bcm2708_systemtimer
+20007000-20007fff : bcm2708_dma.0
+  20007000-20007fff : bcm2708_dma
+20100000-201000ff : bcm2708_powerman.0
+20200000-20200fff : bcm2708_gpio
+20201000-20201fff : dev:f1
+  20201000-20201fff : uart-pl011
+20204000-202040ff : bcm2708_spi.0
+20205000-202050ff : bcm2708_i2c.0
+20300000-203000ff : bcm2708_sdhci.0
+  20300000-203000ff : mmc0
+20804000-208040ff : bcm2708_i2c.1
+20980000-2099ffff : bcm2708_usb
+  20980000-2099ffff : dwc_otg
+#endif

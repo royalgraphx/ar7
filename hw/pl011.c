@@ -46,8 +46,13 @@ typedef struct {
     do { } while (0)
 #endif
 
+#if defined(BCM2708)
+static const unsigned char pl011_id_arm[8] =
+  { 0x11, 0x10, 0x24, 0x00, 0x0d, 0xf0, 0x05, 0xb1 };
+#else
 static const unsigned char pl011_id_arm[8] =
   { 0x11, 0x10, 0x14, 0x00, 0x0d, 0xf0, 0x05, 0xb1 };
+#endif
 static const unsigned char pl011_id_luminary[8] =
   { 0x11, 0x00, 0x18, 0x01, 0x0d, 0xf0, 0x05, 0xb1 };
 
@@ -64,9 +69,6 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
 {
     pl011_state *s = (pl011_state *)opaque;
     uint32_t c;
-
-    logout("offset=0x%02" TARGET_PRIxPHYS " (UART0) %s\n", offset,
-           qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
 
     if (offset >= 0xfe0 && offset < 0x1000) {
         logout("offset=0x%02" TARGET_PRIxPHYS ". value=0x%08x (UART0) %s\n",
