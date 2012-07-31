@@ -15,13 +15,15 @@
  */
 
 #include "qemu-common.h"
-#include "hw/arm-misc.h"
-#include "hw/devices.h"
-#include "hw/boards.h"
-#include "hw/flash.h"
-#include "hw/sysbus.h"
 #include "blockdev.h"
+#include "console.h"            /* graphic_console_init */
 #include "exec-memory.h"
+#include "hw/arm-misc.h"
+#include "hw/boards.h"
+#include "hw/devices.h"
+#include "hw/flash.h"
+#include "hw/framebuffer.h"     /* framebuffer_update_display */
+#include "hw/sysbus.h"
 #include "net.h"
 #include "sysemu.h"
 //~ #include "i2c.h"
@@ -210,6 +212,18 @@ static char bt_buffer[256];
 #define ARM_MC_ERROVERFLW 0x00000200 /* error : write to fill mailbox */
 #define ARM_MC_ERRUNDRFLW 0x00000400 /* error : read from empty mailbox */
 
+/* Code copied from Linux arch/arm/mach-bcm2708/include/mach/vcio.h. */
+
+/* Constants shared with the ARM identifying separate mailbox channels */
+#define MBOX_CHAN_POWER   0 /* for use by the power management interface */
+#define MBOX_CHAN_FB      1 /* for use by the frame buffer */
+#define MBOX_CHAN_VUART   2 /* for use by the virtual UART */
+#define MBOX_CHAN_VCHIQ   3 /* for use by the VCHIQ interface */
+#define MBOX_CHAN_LEDS    4 /* for use by the leds interface */
+#define MBOX_CHAN_BUTTONS 5 /* for use by the buttons interface */
+#define MBOX_CHAN_TOUCH   6 /* for use by the touchscreen interface */
+#define MBOX_CHAN_COUNT   7
+
 /* Linux code ends here. */
 
 #define SZ_4K   4096
@@ -239,10 +253,15 @@ typedef struct {
 } BCM2708SystemTimer;
 
 typedef struct {
+    DisplayState *ds;
+} BCM2708Framebuffer;
+
+typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
     BCM2708InterruptController ic;      /* interrupt controller */
     BCM2708SystemTimer st;              /* system timer */
+    BCM2708Framebuffer fb;              /* frame buffer */
     pl011_state uart0;
     //~ uint32_t level;
     //~ uint32_t mask;
@@ -628,8 +647,29 @@ static void bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
         /* TODO: Clear error bits. */
         break;
     case 0xa0:          // ARM_0_MAIL1_WRT
+//~ RPI     bcm2708_0_sbm_read      offset=0x98, value=0x40000000 (ARM_0_MAIL0_STA)
+//~ RPI     bcm2708_0_sbm_write     offset=0xa0, value=0x4f8f2001 (ARM_0_MAIL1_WRT)
+//~ RPI     bcm2708_set_irq         interrupt 65 = 1
+//~ RPI     bcm2708_ic_write        offset=0x24, value=0x00000002 (Disable Basic IRQs)
+//~ RPI     bcm2708_ic_write        offset=0x24, value=0x00000002 (Disable Basic IRQs)
+//~ RPI     bcm2708_0_sbm_read      offset=0x98, value=0x00000000 (ARM_0_MAIL0_STA)
+//~ RPI     bcm2708_set_irq         interrupt 65 = 0
+//~ RPI     bcm2708_0_sbm_read      offset=0x80, value=0x00000001 (ARM_0_MAIL0_RD)
+//~ RPI     bcm2708_0_sbm_read      offset=0x98, value=0x40000000 (ARM_0_MAIL0_STA)
+//~ RPI     bcm2708_ic_write        offset=0x18, value=0x00000002 (Enable Basic IRQs)
         logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT)\n", offset, value);
         mailbox_empty = false;
+        if (value == 0x00) {
+            //~ mailbox_value = 0x4711;
+            mailbox_value = 0x0000;
+        } else if (value == 0x80) {
+            mailbox_value = 0x0080;
+        } else if (value & 1) {
+            /* Framebuffer read. */
+            mailbox_value = 0x00000001;
+        } else {
+            mailbox_value = 0x0815;
+        }
         bcm2708_set_irq(INTERRUPT_ARM_MAILBOX, true);
         break;
     default:
@@ -701,6 +741,28 @@ static const MemoryRegionOps bcm2708_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static void bcm2708_fb_invalidate(void *opaque)
+{
+    logout("\n");
+}
+
+static void bcm2708_fb_dump(void *opaque, const char *filename, bool cswitch)
+{
+    logout("\n");
+}
+
+static void bcm2708_fb_update(void *opaque)
+{
+    // This function is called frequently.
+    //~ logout("\n");
+    //~ framebuffer_update_display(s->ds, sysbus_address_space(&s->busdev),
+                               //~ s->base, s->cols, s->rows,
+                               //~ src_width, dest_width, 0,
+                               //~ s->need_update,
+                               //~ fn, s->palette,
+                               //~ &first, &last);
+}
+
 /* -------------------------------------------------------------------------- */
 
 //~ static BCM2708State *bcm2708;
@@ -742,7 +804,7 @@ static int bcm2708_init(SysBusDevice *dev)
 
     /* BCM2708. */
     memory_region_init_io(&s->iomem, &bcm2708_ops, s, "bcm2708",
-                          USB_BASE + 0x1000 - BCM2708_PERI_BASE);
+                          0xa0000000);
     sysbus_init_mmio(dev, &s->iomem);
 
     /* Interrupt controller. */
@@ -783,6 +845,10 @@ static int bcm2708_init(SysBusDevice *dev)
                                 ARMCTRL_TIMER0_1_BASE - BCM2708_PERI_BASE,
                                 busdev->mmio[0].memory);
     sysbus_init_irq(busdev, &s->ic.irq[0]);
+
+    s->fb.ds = graphic_console_init(bcm2708_fb_update,
+                                    bcm2708_fb_invalidate,
+                                    bcm2708_fb_dump, NULL, s);
 
     return 0;
 }
@@ -853,16 +919,14 @@ static void raspi_init(ram_addr_t ram_size,
         exit(1);
     }
 
-    /* Ignore the RAM size argument and use always the standard size. */
-    ram_size = 256 * MiB;
-
-    memory_region_init_ram(&rpi->ram, "raspi.ram", ram_size);
+    /* Always allocate 256 MiB RAM. */
+    memory_region_init_ram(&rpi->ram, "raspi.ram", 256 * MiB);
     vmstate_register_ram_global(&rpi->ram);
-    /* ??? RAM should repeat to fill physical memory space.  */
+    /* ??? RAM should repeat to fill physical memory space. */
     memory_region_add_subregion(sysmem, BCM2708_SDRAM_BASE, &rpi->ram);
 
     memory_region_init_alias(&rpi->ram_alias, "ram.alias",
-                             &rpi->ram, 0, ram_size);
+                             &rpi->ram, 0, 256 * MiB);
     memory_region_add_subregion(sysmem, 0xc0000000, &rpi->ram_alias);
 
     rpi->cpu_pic = arm_pic_init_cpu(cpu);
@@ -875,11 +939,10 @@ static void raspi_init(ram_addr_t ram_size,
 
     //~ sysbus_connect_irq(sysbus_from_qdev(sysctl), 0, rpi->cpu_pic[ARM_PIC_CPU_IRQ]);
 
-    //~ sysctl = qdev_create(NULL, "realview_sysctl");
-    //~ qdev_prop_set_uint32(sysctl, "sys_id", 0x41007004);
-    //~ qdev_prop_set_uint32(sysctl, "proc_id", 0x02000000);
-    //~ qdev_init_nofail(sysctl);
-    //~ sysbus_mmio_map(sysbus_from_qdev(sysctl), 0, 0x10000000);
+    if (ram_size > 256 * MiB) {
+        /* Limit the RAM size for Linux to the size of the physical RAM. */
+        ram_size = 256 * MiB;
+    }
 
     raspi_binfo.ram_size = ram_size;
     raspi_binfo.kernel_filename = kernel_filename;
