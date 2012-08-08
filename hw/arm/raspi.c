@@ -28,13 +28,17 @@
 #include "sysemu.h"
 //~ #include "i2c.h"
 
+#define logout(fmt, ...) \
+    fprintf(stderr, "RPI\t%-24s" fmt, __func__, ##__VA_ARGS__)
+
 // TODO: put in header file
 extern const char *qemu_sprint_backtrace(char *buffer, size_t length);
 
-static char bt_buffer[256];
-
-#define logout(fmt, ...) \
-    fprintf(stderr, "RPI\t%-24s" fmt, __func__, ##__VA_ARGS__)
+static const char *bt(void)
+{
+    static char bt_buffer[256];
+    return qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer));
+}
 
 #define BCM2708
 #include "hw/pl011.c"
@@ -253,7 +257,17 @@ typedef struct {
 } BCM2708SystemTimer;
 
 typedef struct {
+    uint32_t xres, yres, xres_virtual, yres_virtual;
+    uint32_t pitch, bpp;
+    uint32_t xoffset, yoffset;
+    uint32_t base;
+    uint32_t screen_size;
+    uint16_t cmap[256];
+} FBInfo;
+
+typedef struct {
     DisplayState *ds;
+    FBInfo info;
 } BCM2708Framebuffer;
 
 typedef struct {
@@ -586,11 +600,102 @@ static uint32_t bcm2708_uart0_read(BCM2708State *s, unsigned offset)
     switch (offset) {
     default:
         logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
-               qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
+               bt());
         return value;
     }
     //~ logout("offset=0x%02x, value=0x%08x\n", offset, value);
     return value;
+}
+
+/* External Mass Media Controller (eMMC). */
+
+static uint32_t bcm2708_emmc_read(BCM2708State *s, unsigned offset)
+{
+    uint32_t value = 0;
+    switch (offset) {
+    case 0x00:  /* ACMD23 argument */
+    case 0x04:  /* block size and count */
+    case 0x08:  /* argument */
+    case 0x0c:  /* command and transfer mode */
+    case 0x28:  /* host configuration bits */
+    case 0x2c:  /* host configuration bits */
+    case 0x34:  /* interrupt flag enable */
+    case 0xfc:  /* slot interrupt status and version */
+    default:
+        logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
+               bt());
+        return value;
+    }
+    logout("offset=0x%02x, value=0x%08x\n", offset, value);
+    return value;
+}
+
+static void bcm2708_emmc_write(BCM2708State *s, unsigned offset, uint32_t value)
+{
+    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+    //~        offset, value);
+    switch (offset) {
+    case 0x28:  /* host configuration bits */
+    case 0x2c:  /* host configuration bits */
+    case 0x34:  /* interrupt flag enable */
+    case 0x38:  /* interrupt generation enable */
+    case 0x80:  /* expansion fifo configuration */
+    case 0x84:  /* expansion fifo enable */
+    default:
+        logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
+               bt());
+    }
+}
+
+/* GPIO. */
+
+static uint32_t bcm2708_gpio_read(BCM2708State *s, unsigned offset)
+{
+    uint32_t value = 0;
+    switch (offset) {
+    default:
+        logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
+               bt());
+        return value;
+    }
+    return value;
+}
+
+static void bcm2708_gpio_write(BCM2708State *s, unsigned offset, uint32_t value)
+{
+    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+    //~        offset, value);
+    switch (offset) {
+    default:
+        logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
+               bt());
+    }
+}
+
+/* USB. */
+
+static uint32_t bcm2708_usb_read(BCM2708State *s, unsigned offset)
+{
+    uint32_t value = 0;
+    switch (offset) {
+    default:
+        logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
+               bt());
+        return value;
+    }
+    logout("offset=0x%02x, value=0x%08x\n", offset, value);
+    return value;
+}
+
+static void bcm2708_usb_write(BCM2708State *s, unsigned offset, uint32_t value)
+{
+    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+    //~        offset, value);
+    switch (offset) {
+    default:
+        logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
+               bt());
+    }
 }
 
 static bool mailbox_empty;
@@ -622,7 +727,7 @@ static uint32_t bcm2708_0_sbm_read(BCM2708State *s, unsigned offset)
     case 0xa0:          // ARM_0_MAIL1_WRT
     default:
         logout("offset=0x%02x, value=0x%08x (TODO) %s\n", offset, value,
-               qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
+               bt());
         return value;
     }
     //~ logout("offset=0x%02x, value=0x%08x\n", offset, value);
@@ -647,28 +752,50 @@ static void bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
         /* TODO: Clear error bits. */
         break;
     case 0xa0:          // ARM_0_MAIL1_WRT
-//~ RPI     bcm2708_0_sbm_read      offset=0x98, value=0x40000000 (ARM_0_MAIL0_STA)
-//~ RPI     bcm2708_0_sbm_write     offset=0xa0, value=0x4f8f2001 (ARM_0_MAIL1_WRT)
-//~ RPI     bcm2708_set_irq         interrupt 65 = 1
-//~ RPI     bcm2708_ic_write        offset=0x24, value=0x00000002 (Disable Basic IRQs)
-//~ RPI     bcm2708_ic_write        offset=0x24, value=0x00000002 (Disable Basic IRQs)
-//~ RPI     bcm2708_0_sbm_read      offset=0x98, value=0x00000000 (ARM_0_MAIL0_STA)
-//~ RPI     bcm2708_set_irq         interrupt 65 = 0
-//~ RPI     bcm2708_0_sbm_read      offset=0x80, value=0x00000001 (ARM_0_MAIL0_RD)
-//~ RPI     bcm2708_0_sbm_read      offset=0x98, value=0x40000000 (ARM_0_MAIL0_STA)
-//~ RPI     bcm2708_ic_write        offset=0x18, value=0x00000002 (Enable Basic IRQs)
-        logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT)\n", offset, value);
         mailbox_empty = false;
-        if (value == 0x00) {
+        switch (value & 7) {
+        case MBOX_CHAN_POWER:
             //~ mailbox_value = 0x4711;
-            mailbox_value = 0x0000;
-        } else if (value == 0x80) {
-            mailbox_value = 0x0080;
-        } else if (value & 1) {
+            mailbox_value = 0x00000000 + MBOX_CHAN_POWER;
+            if (value == 0x80) {
+                mailbox_value = 0x00000080 + MBOX_CHAN_POWER;
+            }
+            logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT Power)\n", offset, value);
+            break;
+        case MBOX_CHAN_FB:
             /* Framebuffer read. */
-            mailbox_value = 0x00000001;
-        } else {
+            mailbox_value = 0x00000000 + MBOX_CHAN_FB;
+            {
+                //~ $9 = (volatile struct fbinfo_s *) 0xffdff000
+                //~ (gdb) p *fbinfo
+                //~ $10 = {xres = 800, yres = 480, xres_virtual = 800, yres_virtual = 480, pitch = 0, bpp = 16, xoffset = 0, yoffset = 0,
+                //~ base = 0, screen_size = 0, cmap = {0 <repeats 256 times>}}
+                FBInfo *fbinfo = &s->fb.info;
+                unsigned bytes_per_pixel;
+                uint32_t addr = value & ~7;
+                addr &= 0x0fffffff;
+                cpu_physical_memory_read(addr, fbinfo, sizeof(*fbinfo));
+                bytes_per_pixel = fbinfo->bpp / 8;
+                /* TODO: Do we have to handle 15 bpp or other odd values? */
+                assert(bytes_per_pixel * 8 == fbinfo->bpp);
+                fbinfo->pitch = fbinfo->xres_virtual * bytes_per_pixel;
+                fbinfo->base = 192 * MiB;
+                fbinfo->screen_size =
+                    fbinfo->xres_virtual * fbinfo->yres_virtual * bytes_per_pixel;
+                logout("framebuffer %u x %u x %u, %u byte at 0x%08x\n",
+                       fbinfo->xres, fbinfo->yres, fbinfo->bpp,
+                       fbinfo->screen_size, addr);
+                cpu_physical_memory_write(addr, fbinfo, sizeof(*fbinfo));
+            }
+            logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT Framebuffer)\n", offset, value);
+            break;
+        case MBOX_CHAN_VCHIQ:
+            mailbox_value = 0x00000080 + MBOX_CHAN_VCHIQ;
+            logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT VCHIQ)\n", offset, value);
+            break;
+        default:
             mailbox_value = 0x0815;
+            logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT TODO)\n", offset, value);
         }
         bcm2708_set_irq(INTERRUPT_ARM_MAILBOX, true);
         break;
@@ -697,6 +824,15 @@ static uint64_t bcm2708_read(void *opaque, target_phys_addr_t offset,
     case ARMCTRL_0_SBM_BASE ... ARMCTRL_0_SBM_BASE + 0xa0:
         value = bcm2708_0_sbm_read(s, IO(offset) - ARMCTRL_0_SBM_BASE);
         break;
+    case GPIO_BASE ... GPIO_BASE + SZ_4K - 1:
+        value = bcm2708_gpio_read(s, IO(offset) - GPIO_BASE);
+        break;
+    case EMMC_BASE ... EMMC_BASE + 0xff:
+        value = bcm2708_emmc_read(s, IO(offset) - EMMC_BASE);
+        break;
+    case USB_BASE ... USB_BASE + 0x1ffff:
+        value = bcm2708_usb_read(s, IO(offset) - USB_BASE);
+        break;
     default:
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n", offset);
     }
@@ -716,6 +852,15 @@ static void bcm2708_write(void *opaque, target_phys_addr_t offset,
         break;
     case ARMCTRL_0_SBM_BASE ... ARMCTRL_0_SBM_BASE + 0xa0:
         bcm2708_0_sbm_write(s, IO(offset) - ARMCTRL_0_SBM_BASE, value);
+        break;
+    case GPIO_BASE ... GPIO_BASE + SZ_4K - 1:
+        bcm2708_gpio_write(s, IO(offset) - GPIO_BASE, value);
+        break;
+    case EMMC_BASE ... EMMC_BASE + 0xff:
+        bcm2708_emmc_write(s, IO(offset) - EMMC_BASE, value);
+        break;
+    case USB_BASE ... USB_BASE + 0x1ffff:
+        bcm2708_usb_write(s, IO(offset) - USB_BASE, value);
         break;
     default:
         logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
@@ -1011,9 +1156,17 @@ TODO:
 
 arch_hw_breakpoint_init - keine Debug-Architektur
 
-
 mailbox0 from GPU to ARM
 mailbox1 from ARM to GPU
 
+Errata Manual:
+
+* can used -> can be used
+* it is easy sample -> it is easy to sample
+* the before -> before
+
+ARASAN SD3.0_Host_AHB_eMMC4.4_Usersguide_ver5.9_jan11_10.pdf
+DWC_otg_databook.pdf
+https://www.synopsys.com/dw/ipdir.php?ds=dwc_usb_2_0_hs_otg
 
 #endif

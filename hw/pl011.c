@@ -73,13 +73,13 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
     if (offset >= 0xfe0 && offset < 0x1000) {
         logout("offset=0x%02" TARGET_PRIxPHYS ". value=0x%08x (UART0) %s\n",
                offset, s->id[(offset - 0xfe0) >> 2],
-               qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
+               bt());
 
         return s->id[(offset - 0xfe0) >> 2];
     }
 
     //~ logout("offset=0x%02" TARGET_PRIxPHYS " (UART0) %s\n", offset,
-           //~ qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
+           //~ bt());
 
     switch (offset >> 2) {
     case 0: /* UARTDR */
@@ -150,7 +150,7 @@ static void pl011_write(void *opaque, hwaddr offset,
     unsigned char ch;
 
     //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (UART0) %s\n",
-           //~ offset, value, qemu_sprint_backtrace(bt_buffer, sizeof(bt_buffer)));
+           //~ offset, value, bt());
 
     switch (offset >> 2) {
     case 0: /* UARTDR */
@@ -212,7 +212,7 @@ static int pl011_can_receive(void *opaque)
 {
     pl011_state *s = (pl011_state *)opaque;
 
-    logout("\n");
+    //~ logout("\n");
 
     if (s->lcr & 0x10)
         return s->read_count < 16;
@@ -242,7 +242,7 @@ static void pl011_put_fifo(void *opaque, uint32_t value)
 
 static void pl011_receive(void *opaque, const uint8_t *buf, int size)
 {
-    logout("\n");
+    //~ logout("\n");
     pl011_put_fifo(opaque, *buf);
 }
 
