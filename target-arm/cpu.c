@@ -339,7 +339,8 @@ static void arm1176_initfn(Object *obj)
     cpu->reset_fpsid = 0x410120b5;
     cpu->mvfr0 = 0x11111111;
     cpu->mvfr1 = 0x00000000;
-    cpu->ctr = 0x1dd20d2;
+    //~ cpu->ctr = 0x1dd20d2;
+    cpu->ctr = 0x15d20d2;
     cpu->reset_sctlr = 0x00050078;
     cpu->id_pfr0 = 0x111;
     cpu->id_pfr1 = 0x11;
