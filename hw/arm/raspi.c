@@ -230,6 +230,9 @@ static const char *bt(void)
 
 /* Linux code ends here. */
 
+#define IO_SIZE 0x20000000
+#define RAM_SIZE (256 * MiB)
+
 #define SZ_4K   4096
 
 typedef struct {
@@ -273,6 +276,9 @@ typedef struct {
 typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
+    MemoryRegion alias_4;
+    MemoryRegion alias_8;
+    MemoryRegion alias_c;
     BCM2708InterruptController ic;      /* interrupt controller */
     BCM2708SystemTimer st;              /* system timer */
     BCM2708Framebuffer fb;              /* frame buffer */
@@ -284,7 +290,9 @@ typedef struct {
 
 typedef struct {
     MemoryRegion ram;
-    MemoryRegion ram_alias;
+    MemoryRegion ram_4_alias;
+    MemoryRegion ram_8_alias;
+    MemoryRegion ram_c_alias;
     BCM2708State *bcm2708;
     qemu_irq *cpu_pic;
 } RaspberryPi;
@@ -773,7 +781,6 @@ static void bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
                 FBInfo *fbinfo = &s->fb.info;
                 unsigned bytes_per_pixel;
                 uint32_t addr = value & ~7;
-                addr &= 0x0fffffff;
                 cpu_physical_memory_read(addr, fbinfo, sizeof(*fbinfo));
                 bytes_per_pixel = fbinfo->bpp / 8;
                 /* TODO: Do we have to handle 15 bpp or other odd values? */
@@ -935,6 +942,7 @@ static int bcm2708_pl011_arm_init(SysBusDevice *dev, pl011_state *s)
 static int bcm2708_init(SysBusDevice *dev)
 {
     BCM2708State *s = FROM_SYSBUS(BCM2708State, dev);
+    MemoryRegion *sysmem = get_system_memory();
     int i;
 
     logout("\n");
@@ -949,8 +957,20 @@ static int bcm2708_init(SysBusDevice *dev)
 
     /* BCM2708. */
     memory_region_init_io(&s->iomem, &bcm2708_ops, s, "bcm2708",
-                          0xa0000000);
+                          IO_SIZE);
     sysbus_init_mmio(dev, &s->iomem);
+
+    /* The BCM2835 includes an MMU which maps ARM physical addresses to
+       bus addresses. The address space is splitted in 4 alias regions. */
+    memory_region_init_alias(&s->alias_4, "bcm2708.4.alias",
+                             &s->iomem, 0, IO_SIZE);
+    memory_region_add_subregion(sysmem, 0x60000000, &s->alias_4);
+    memory_region_init_alias(&s->alias_8, "bcm2708.8.alias",
+                             &s->iomem, 0, IO_SIZE);
+    memory_region_add_subregion(sysmem, 0xa0000000, &s->alias_8);
+    memory_region_init_alias(&s->alias_c, "bcm2708.c.alias",
+                             &s->iomem, 0, IO_SIZE);
+    memory_region_add_subregion(sysmem, 0xe0000000, &s->alias_c);
 
     /* Interrupt controller. */
     memory_region_init_io(&s->ic.iomem, &bcm2708_armctrl_ops, s, "bcm2708.ic",
@@ -1065,14 +1085,21 @@ static void raspi_init(ram_addr_t ram_size,
     }
 
     /* Always allocate 256 MiB RAM. */
-    memory_region_init_ram(&rpi->ram, "raspi.ram", 256 * MiB);
+    memory_region_init_ram(&rpi->ram, "raspi.ram", RAM_SIZE);
     vmstate_register_ram_global(&rpi->ram);
-    /* ??? RAM should repeat to fill physical memory space. */
     memory_region_add_subregion(sysmem, BCM2708_SDRAM_BASE, &rpi->ram);
 
-    memory_region_init_alias(&rpi->ram_alias, "ram.alias",
-                             &rpi->ram, 0, 256 * MiB);
-    memory_region_add_subregion(sysmem, 0xc0000000, &rpi->ram_alias);
+    /* The BCM2835 includes an MMU which maps ARM physical addresses to
+       bus addresses. The address space is splitted in 4 alias regions. */
+    memory_region_init_alias(&rpi->ram_4_alias, "ram.4.alias",
+                             &rpi->ram, 0, RAM_SIZE);
+    memory_region_add_subregion(sysmem, 0x40000000, &rpi->ram_4_alias);
+    memory_region_init_alias(&rpi->ram_8_alias, "ram.8.alias",
+                             &rpi->ram, 0, RAM_SIZE);
+    memory_region_add_subregion(sysmem, 0x80000000, &rpi->ram_8_alias);
+    memory_region_init_alias(&rpi->ram_c_alias, "ram.c.alias",
+                             &rpi->ram, 0, RAM_SIZE);
+    memory_region_add_subregion(sysmem, 0xc0000000, &rpi->ram_c_alias);
 
     rpi->cpu_pic = arm_pic_init_cpu(cpu);
 
@@ -1084,9 +1111,9 @@ static void raspi_init(ram_addr_t ram_size,
 
     //~ sysbus_connect_irq(sysbus_from_qdev(sysctl), 0, rpi->cpu_pic[ARM_PIC_CPU_IRQ]);
 
-    if (ram_size > 256 * MiB) {
+    if (ram_size > RAM_SIZE) {
         /* Limit the RAM size for Linux to the size of the physical RAM. */
-        ram_size = 256 * MiB;
+        ram_size = RAM_SIZE;
     }
 
     raspi_binfo.ram_size = ram_size;
