@@ -230,7 +230,7 @@ static const char *bt(void)
 
 /* Linux code ends here. */
 
-#define IO_SIZE 0x20000000
+#define IO_SIZE (16 * MiB)
 #define RAM_SIZE (256 * MiB)
 
 #define SZ_4K   4096
@@ -293,6 +293,7 @@ typedef struct {
     MemoryRegion ram_4_alias;
     MemoryRegion ram_8_alias;
     MemoryRegion ram_c_alias;
+    struct arm_boot_info binfo;
     BCM2708State *bcm2708;
     qemu_irq *cpu_pic;
 } RaspberryPi;
@@ -786,12 +787,12 @@ static void bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
                 /* TODO: Do we have to handle 15 bpp or other odd values? */
                 assert(bytes_per_pixel * 8 == fbinfo->bpp);
                 fbinfo->pitch = fbinfo->xres_virtual * bytes_per_pixel;
-                fbinfo->base = 192 * MiB;
+                fbinfo->base = rpi->binfo.ram_size;
                 fbinfo->screen_size =
                     fbinfo->xres_virtual * fbinfo->yres_virtual * bytes_per_pixel;
                 logout("framebuffer %u x %u x %u, %u byte at 0x%08x\n",
                        fbinfo->xres, fbinfo->yres, fbinfo->bpp,
-                       fbinfo->screen_size, addr);
+                       fbinfo->screen_size, fbinfo->base);
                 cpu_physical_memory_write(addr, fbinfo, sizeof(*fbinfo));
             }
             logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT Framebuffer)\n", offset, value);
@@ -1061,8 +1062,6 @@ type_init(raspi_register_types)
 
 /* Board init. */
 
-static struct arm_boot_info raspi_binfo;
-
 static void raspi_init(ram_addr_t ram_size,
                      const char *boot_device,
                      const char *kernel_filename, const char *kernel_cmdline,
@@ -1073,7 +1072,7 @@ static void raspi_init(ram_addr_t ram_size,
 
     logout("\n");
 
-    rpi = g_new(RaspberryPi, 1);
+    rpi = g_new0(RaspberryPi, 1);
 
     if (!cpu_model) {
         cpu_model = "arm1176";
@@ -1116,12 +1115,12 @@ static void raspi_init(ram_addr_t ram_size,
         ram_size = RAM_SIZE;
     }
 
-    raspi_binfo.ram_size = ram_size;
-    raspi_binfo.kernel_filename = kernel_filename;
-    raspi_binfo.kernel_cmdline = kernel_cmdline;
-    raspi_binfo.initrd_filename = initrd_filename;
-    raspi_binfo.board_id = 0x183;
-    arm_load_kernel(cpu, &raspi_binfo);
+    rpi->binfo.ram_size = ram_size;
+    rpi->binfo.kernel_filename = kernel_filename;
+    rpi->binfo.kernel_cmdline = kernel_cmdline;
+    rpi->binfo.initrd_filename = initrd_filename;
+    rpi->binfo.board_id = 0x183;
+    arm_load_kernel(cpu, &rpi->binfo);
 }
 
 static QEMUMachine raspi_machine = {
@@ -1191,6 +1190,7 @@ Errata Manual:
 * can used -> can be used
 * it is easy sample -> it is easy to sample
 * the before -> before
+* kenel -> kernel
 
 ARASAN SD3.0_Host_AHB_eMMC4.4_Usersguide_ver5.9_jan11_10.pdf
 DWC_otg_databook.pdf
