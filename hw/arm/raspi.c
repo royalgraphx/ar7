@@ -896,17 +896,26 @@ static const MemoryRegionOps bcm2708_ops = {
 
 static void bcm2708_fb_invalidate(void *opaque)
 {
+    //~ BCM2708State *s = opaque;
     logout("\n");
 }
 
 static void bcm2708_fb_dump(void *opaque, const char *filename, bool cswitch)
 {
+    //~ BCM2708State *s = opaque;
+    logout("\n");
+}
+
+static void bcm2708_fb_text_update(void *opaque, console_ch_t *chardata)
+{
+    //~ BCM2708State *s = opaque;
     logout("\n");
 }
 
 static void bcm2708_fb_update(void *opaque)
 {
     // This function is called frequently.
+    //~ BCM2708State *s = opaque;
     //~ logout("\n");
     //~ framebuffer_update_display(s->ds, sysbus_address_space(&s->busdev),
                                //~ s->base, s->cols, s->rows,
@@ -1014,7 +1023,7 @@ static int bcm2708_init(SysBusDevice *dev)
 
     s->fb.ds = graphic_console_init(bcm2708_fb_update,
                                     bcm2708_fb_invalidate,
-                                    bcm2708_fb_dump, NULL, s);
+                                    bcm2708_fb_dump, bcm2708_fb_text_update, s);
 
     return 0;
 }
