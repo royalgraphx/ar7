@@ -711,7 +711,7 @@ static bool mailbox_empty;
 static unsigned mailbox_value;
 //~ static uint8_t mailbox[] = { 1 };
 //~ static uint8_t mailbox_index;
-#define MAILBOX_SIZE (sizeof(mailbox) / sizeof(mailbox[0]))
+#define MAILBOX_SIZE ARRAY_SIZE(mailbox)
 
 static uint32_t bcm2708_0_sbm_read(BCM2708State *s, unsigned offset)
 {
