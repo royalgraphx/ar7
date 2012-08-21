@@ -23,6 +23,7 @@
 #include "hw/devices.h"
 #include "hw/flash.h"
 #include "hw/framebuffer.h"     /* framebuffer_update_display */
+#include "hw/sd.h"              /* sd_init, ... */
 #include "hw/sysbus.h"
 #include "net.h"
 #include "sysemu.h"
@@ -270,8 +271,21 @@ typedef struct {
 
 typedef struct {
     DisplayState *ds;
+    drawfn *line_fn;
+    unsigned cols;
+    unsigned rows;
+    unsigned width;
+    unsigned src_width;
+    unsigned dest_width;
+    bool enable;
+    bool need_update;
     FBInfo info;
 } BCM2708Framebuffer;
+
+typedef struct {
+    SDState *card;
+    bool enabled;
+} BCM2708SDCard;
 
 typedef struct {
     SysBusDevice busdev;
@@ -282,6 +296,7 @@ typedef struct {
     BCM2708InterruptController ic;      /* interrupt controller */
     BCM2708SystemTimer st;              /* system timer */
     BCM2708Framebuffer fb;              /* frame buffer */
+    BCM2708SDCard emmc;                 /* external mass media controller */
     pl011_state uart0;
     //~ uint32_t level;
     //~ uint32_t mask;
@@ -794,6 +809,7 @@ static void bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
                        fbinfo->xres, fbinfo->yres, fbinfo->bpp,
                        fbinfo->screen_size, fbinfo->base);
                 cpu_physical_memory_write(addr, fbinfo, sizeof(*fbinfo));
+
             }
             logout("offset=0x%02x, value=0x%08x (ARM_0_MAIL1_WRT Framebuffer)\n", offset, value);
             break;
@@ -894,6 +910,49 @@ static const MemoryRegionOps bcm2708_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+/* Framebuffer. */
+
+static inline
+uint32_t s3c24xx_rgb_to_pixel8(unsigned int r, unsigned int g, unsigned b)
+{
+    return ((r >> 5) << 5) | ((g >> 5) << 2) | (b >> 6);
+}
+
+static inline
+uint32_t s3c24xx_rgb_to_pixel15(unsigned int r, unsigned int g, unsigned b)
+{
+    return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+}
+
+static inline
+uint32_t s3c24xx_rgb_to_pixel16(unsigned int r, unsigned int g, unsigned b)
+{
+    return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+}
+
+static inline
+uint32_t s3c24xx_rgb_to_pixel24(unsigned int r, unsigned int g, unsigned b)
+{
+    return (r << 16) | (g << 8) | b;
+}
+
+static inline
+uint32_t s3c24xx_rgb_to_pixel32(unsigned int r, unsigned int g, unsigned b)
+{
+    return (r << 16) | (g << 8) | b;
+}
+
+#define BITS 8
+#include "hw/s3c24xx_template.h"
+#define BITS 15
+#include "hw/s3c24xx_template.h"
+#define BITS 16
+#include "hw/s3c24xx_template.h"
+#define BITS 24
+#include "hw/s3c24xx_template.h"
+#define BITS 32
+#include "hw/s3c24xx_template.h"
+
 static void bcm2708_fb_invalidate(void *opaque)
 {
     //~ BCM2708State *s = opaque;
@@ -914,15 +973,31 @@ static void bcm2708_fb_text_update(void *opaque, console_ch_t *chardata)
 
 static void bcm2708_fb_update(void *opaque)
 {
-    // This function is called frequently.
-    //~ BCM2708State *s = opaque;
+#if 0
+    /* This function is called frequently. */
+    BCM2708Framebuffer *s = opaque;
+    int src_width, dest_width, miny = 0, maxy = 0;
     //~ logout("\n");
-    //~ framebuffer_update_display(s->ds, sysbus_address_space(&s->busdev),
-                               //~ s->base, s->cols, s->rows,
-                               //~ src_width, dest_width, 0,
-                               //~ s->need_update,
-                               //~ fn, s->palette,
-                               //~ &first, &last);
+    if (!s->enable || !s->dest_width)
+        return;
+
+    //~ s3c24xx_lcd_resize(s);
+
+    //~ if (s->invalidatep) {
+        //~ s3c24xx_lcd_palette_load(s);
+        //~ s->invalidatep = 0;
+    //~ }
+
+    src_width = s->src_width;
+    dest_width = s->width * s->dest_width;
+
+    framebuffer_update_display(s->ds, sysbus_address_space(&s->busdev),
+                               s->base, s->cols, s->rows,
+                               src_width, dest_width, 0,
+                               s->need_update,
+                               s->fn, s->palette,
+                               &miny, &maxy);
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
@@ -953,6 +1028,7 @@ static int bcm2708_init(SysBusDevice *dev)
 {
     BCM2708State *s = FROM_SYSBUS(BCM2708State, dev);
     MemoryRegion *sysmem = get_system_memory();
+    DriveInfo *dinfo;
     int i;
 
     logout("\n");
@@ -1021,9 +1097,60 @@ static int bcm2708_init(SysBusDevice *dev)
                                 busdev->mmio[0].memory);
     sysbus_init_irq(busdev, &s->ic.irq[0]);
 
-    s->fb.ds = graphic_console_init(bcm2708_fb_update,
-                                    bcm2708_fb_invalidate,
-                                    bcm2708_fb_dump, bcm2708_fb_text_update, s);
+    s->fb.ds = graphic_console_init(bcm2708_fb_update, bcm2708_fb_invalidate,
+                                    bcm2708_fb_dump, bcm2708_fb_text_update,
+                                    &s->fb);
+
+    switch (16) {
+    case 0:
+        s->fb.dest_width = 0;
+        break;
+
+    case 8:
+        s->fb.line_fn = s3c24xx_draw_fn_8;
+        s->fb.dest_width = 1;
+        break;
+
+    case 15:
+        s->fb.line_fn = s3c24xx_draw_fn_15;
+        s->fb.dest_width = 2;
+        break;
+
+    case 16:
+        s->fb.line_fn = s3c24xx_draw_fn_16;
+        s->fb.dest_width = 2;
+        break;
+
+    case 24:
+        s->fb.line_fn = s3c24xx_draw_fn_24;
+        s->fb.dest_width = 3;
+        break;
+
+    case 32:
+        s->fb.line_fn = s3c24xx_draw_fn_32;
+        s->fb.dest_width = 4;
+        break;
+
+    default:
+        fprintf(stderr, "%s: Bad color depth\n", __FUNCTION__);
+        exit(1);
+    }
+
+    /* SD card. */
+    dinfo = drive_get_next(IF_SD);
+    s->emmc.card = sd_init(dinfo ? dinfo->bdrv : NULL, 0);
+    s->emmc.enabled = dinfo ? bdrv_is_inserted(dinfo->bdrv) : 0;
+
+#if 0
+// TODO: use these functions:
+int sd_do_command(SDState *sd, SDRequest *req,
+                  uint8_t *response);
+void sd_write_data(SDState *sd, uint8_t value);
+uint8_t sd_read_data(SDState *sd);
+void sd_set_cb(SDState *sd, qemu_irq readonly, qemu_irq insert);
+int sd_data_ready(SDState *sd);
+void sd_enable(SDState *sd, int enable);
+#endif
 
     return 0;
 }
@@ -1141,7 +1268,6 @@ static QEMUMachine raspi_machine = {
     //~ .use_virtcon:1,
     .no_floppy = true,
     .no_cdrom = true,
-    //~ no_sdcard:1;
     //~ .default_machine_opts = "ram=256"
 };
 
