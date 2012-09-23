@@ -774,7 +774,8 @@ static void bcm2708_fb_invalidate(void *opaque)
     logout("\n");
 }
 
-static void bcm2708_fb_dump(void *opaque, const char *filename, bool cswitch)
+static void bcm2708_fb_dump(void *opaque, const char *filename, bool cswitch,
+                            Error **errp)
 {
     //~ BCM2708State *s = opaque;
     logout("\n");
