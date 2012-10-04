@@ -1071,6 +1071,8 @@ static void raspi_init(ram_addr_t ram_size,
     rpi->binfo.kernel_cmdline = kernel_cmdline;
     rpi->binfo.initrd_filename = initrd_filename;
     rpi->binfo.board_id = 0x183;
+    rpi->binfo.loader_start = BCM2708_SDRAM_BASE;
+    rpi->binfo.nb_cpus = 1;
     arm_load_kernel(cpu, &rpi->binfo);
 }
 
