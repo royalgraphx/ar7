@@ -33,9 +33,6 @@
 #define logout(fmt, ...) \
     fprintf(stderr, "RPI\t%-24s" fmt, __func__, ##__VA_ARGS__)
 
-// TODO: put in header file
-extern const char *qemu_sprint_backtrace(char *buffer, size_t length);
-
 static const char *bt(void)
 {
     static char bt_buffer[256];
