@@ -41,7 +41,6 @@ static const char *bt(void)
 
 #define BCM2708
 #include "hw/pl011.c"
-#include "hw/arm_timer.c"
 
 #define IO_SIZE (16 * MiB)
 #define RAM_SIZE (256 * MiB)
