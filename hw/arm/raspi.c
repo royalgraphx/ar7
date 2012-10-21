@@ -12,6 +12,8 @@
  * http://elinux.org/RPi_Framebuffer
  * https://github.com/raspberrypi/firmware/wiki/Mailboxes
  *
+ * FN120600773 (Farnell)
+ * E2912RSV1.0B1.1 (RS, 2012-10-05)
  */
 
 #include "qemu-common.h"
@@ -43,7 +45,8 @@ static const char *bt(void)
 #include "hw/pl011.c"
 
 #define IO_SIZE (16 * MiB)
-#define RAM_SIZE (256 * MiB)
+#define RAM_SIZE_256 (256 * MiB)
+#define RAM_SIZE_512 (512 * MiB)
 
 #define SZ_4K   4096
 
@@ -871,15 +874,15 @@ static int bcm2708_init(SysBusDevice *dev)
     memory_region_add_subregion(sysmem, 0xe0000000, &s->alias_c);
 
     /* Interrupt controller. */
-    memory_region_init_io(&s->ic.iomem, &bcm2708_armctrl_ops, s, "bcm2708.ic",
-                          0x0400);
+    memory_region_init_io(&s->ic.iomem, &bcm2708_armctrl_ops, s,
+                          "bcm2708.ic", 0x0400);
     memory_region_add_subregion(&s->iomem,
                                 ARMCTRL_BASE - BCM2708_PERI_BASE,
                                 &s->ic.iomem);
 
     /* System timer. */
-    memory_region_init_io(&s->st.iomem, &bcm2708_st_ops, &s->st, "bcm2708.st",
-                          0x1000);
+    memory_region_init_io(&s->st.iomem, &bcm2708_st_ops, &s->st,
+                          "bcm2708.st", 0x1000);
     memory_region_add_subregion(&s->iomem,
                                 ST_BASE - BCM2708_PERI_BASE,
                                 &s->st.iomem);
@@ -890,8 +893,8 @@ static int bcm2708_init(SysBusDevice *dev)
 
     /* UART0. */
     //~ sysbus_create_simple("bcm2708.pl011", UART0_BASE, s->parent[12]);
-    memory_region_init_io(&s->uart0.iomem, &pl011_ops, &s->uart0, "bcm2708.uart0",
-                          0x1000);
+    memory_region_init_io(&s->uart0.iomem, &pl011_ops, &s->uart0,
+                          "bcm2708.uart0", 0x1000);
     memory_region_add_subregion(&s->iomem,
                                 UART0_BASE - BCM2708_PERI_BASE,
                                 &s->uart0.iomem);
@@ -1010,11 +1013,9 @@ type_init(raspi_register_types)
 
 /* Board init. */
 
-static void raspi_init(ram_addr_t ram_size,
-                     const char *boot_device,
-                     const char *kernel_filename, const char *kernel_cmdline,
-                     const char *initrd_filename, const char *cpu_model)
+static void raspi_init(QEMUMachineInitArgs *args)
 {
+    ram_addr_t physical_ram_size;
     ARMCPU *cpu;
     MemoryRegion *sysmem = get_system_memory();
 
@@ -1022,30 +1023,41 @@ static void raspi_init(ram_addr_t ram_size,
 
     rpi = g_new0(RaspberryPi, 1);
 
-    if (!cpu_model) {
-        cpu_model = "arm1176";
+    if (!args->cpu_model) {
+        args->cpu_model = "arm1176";
     }
-    cpu = cpu_arm_init(cpu_model);
+    cpu = cpu_arm_init(args->cpu_model);
     if (!cpu) {
         logout("Unable to find CPU definition\n");
         exit(1);
     }
 
-    /* Always allocate 256 MiB RAM. */
-    memory_region_init_ram(&rpi->ram, "raspi.ram", RAM_SIZE);
+    /* We support 256 or 512 physical RAM size. */
+    physical_ram_size = RAM_SIZE_256;
+    if (args->ram_size > physical_ram_size) {
+        physical_ram_size = RAM_SIZE_512;
+    }
+
+    /* Limit the RAM size for Linux to the size of the physical RAM. */
+    if (args->ram_size > physical_ram_size) {
+        args->ram_size = physical_ram_size;
+    }
+
+    /* Always allocate the physical RAM size. */
+    memory_region_init_ram(&rpi->ram, "raspi.ram", physical_ram_size);
     vmstate_register_ram_global(&rpi->ram);
     memory_region_add_subregion(sysmem, BCM2708_SDRAM_BASE, &rpi->ram);
 
     /* The BCM2835 includes an MMU which maps ARM physical addresses to
        bus addresses. The address space is splitted in 4 alias regions. */
     memory_region_init_alias(&rpi->ram_4_alias, "ram.4.alias",
-                             &rpi->ram, 0, RAM_SIZE);
+                             &rpi->ram, 0, physical_ram_size);
     memory_region_add_subregion(sysmem, 0x40000000, &rpi->ram_4_alias);
     memory_region_init_alias(&rpi->ram_8_alias, "ram.8.alias",
-                             &rpi->ram, 0, RAM_SIZE);
+                             &rpi->ram, 0, physical_ram_size);
     memory_region_add_subregion(sysmem, 0x80000000, &rpi->ram_8_alias);
     memory_region_init_alias(&rpi->ram_c_alias, "ram.c.alias",
-                             &rpi->ram, 0, RAM_SIZE);
+                             &rpi->ram, 0, physical_ram_size);
     memory_region_add_subregion(sysmem, 0xc0000000, &rpi->ram_c_alias);
 
     rpi->cpu_pic = arm_pic_init_cpu(cpu);
@@ -1058,15 +1070,10 @@ static void raspi_init(ram_addr_t ram_size,
 
     //~ sysbus_connect_irq(sysbus_from_qdev(sysctl), 0, rpi->cpu_pic[ARM_PIC_CPU_IRQ]);
 
-    if (ram_size > RAM_SIZE) {
-        /* Limit the RAM size for Linux to the size of the physical RAM. */
-        ram_size = RAM_SIZE;
-    }
-
-    rpi->binfo.ram_size = ram_size;
-    rpi->binfo.kernel_filename = kernel_filename;
-    rpi->binfo.kernel_cmdline = kernel_cmdline;
-    rpi->binfo.initrd_filename = initrd_filename;
+    rpi->binfo.ram_size = args->ram_size;
+    rpi->binfo.kernel_filename = args->kernel_filename;
+    rpi->binfo.kernel_cmdline = args->kernel_cmdline;
+    rpi->binfo.initrd_filename = args->initrd_filename;
     rpi->binfo.board_id = 0x183;
     rpi->binfo.loader_start = BCM2708_SDRAM_BASE;
     rpi->binfo.nb_cpus = 1;
