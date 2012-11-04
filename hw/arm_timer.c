@@ -214,7 +214,7 @@ static uint64_t sp804_read(void *opaque, hwaddr offset,
 {
     sp804_state *s = (sp804_state *)opaque;
 
-    logout("offset=0x%02" TARGET_PRIxPHYS " (timer)\n", offset);
+    logout("offset=0x%02" HWADDR_PRIx " (timer)\n", offset);
 
     if (offset < 0x20) {
         return arm_timer_read(s->timer[0], offset);
@@ -248,7 +248,7 @@ static void sp804_write(void *opaque, hwaddr offset,
 {
     sp804_state *s = (sp804_state *)opaque;
 
-    logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (timer)\n",
+    logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (timer)\n",
            offset, value);
 
     if (offset < 0x20) {

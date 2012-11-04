@@ -251,7 +251,7 @@ static uint32_t bcm2708_dma_read(BCM2708State *s, unsigned offset)
 
 static void bcm2708_dma_write(BCM2708State *s, unsigned offset, uint32_t value)
 {
-    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+    //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n",
     //~        offset, value);
     switch (offset) {
     default:
@@ -262,7 +262,7 @@ static void bcm2708_dma_write(BCM2708State *s, unsigned offset, uint32_t value)
 
 /* ARM Interrupt controller. */
 
-static uint64_t bcm2708_ic_read(void *opaque, target_phys_addr_t offset,
+static uint64_t bcm2708_ic_read(void *opaque, hwaddr offset,
                                 unsigned size)
 {
     BCM2708InterruptController *ic = opaque;
@@ -271,28 +271,28 @@ static uint64_t bcm2708_ic_read(void *opaque, target_phys_addr_t offset,
     switch (offset) {
     case 0x00:  /* IRQ basic pending */
         value = ic->irq_basic_pending;
-        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+        //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n",
                //~ offset, value);
         break;
     case 0x04: /* IRQ pending 1 */
         value = ic->irq_pending_1;
-        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+        //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n",
                //~ offset, value);
         break;
     case 0x08: /* IRQ pending 2 */
         value = ic->irq_pending_2;
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n",
                offset, value);
         break;
     case 0x0c: /* FIQ control */
     default:
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n",
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x0000 (TODO)\n",
                offset);
     }
     return value;
 }
 
-static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t value,
+static void bcm2708_ic_write(void *opaque, hwaddr offset, uint64_t value,
                              unsigned size)
 {
     BCM2708InterruptController *ic = opaque;
@@ -303,42 +303,42 @@ static void bcm2708_ic_write(void *opaque, target_phys_addr_t offset, uint64_t v
     case 0x04: /* IRQ pending 1 */
     case 0x08: /* IRQ pending 2 */
     case 0x0c: /* FIQ control */
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
         break;
     case 0x10: /* Enable IRQs 1 */
         ic->enable_irqs_1 |= value;
         if (value != 8)
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable IRQs 1)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (Enable IRQs 1)\n", offset, value);
         break;
     case 0x14: /* Enable IRQs 2 */
         ic->enable_irqs_2 |= value;
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable IRQs 2)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (Enable IRQs 2)\n", offset, value);
         break;
     case 0x18: /* Enable Basic IRQs */
         ic->enable_basic_irqs |= value;
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Enable Basic IRQs)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (Enable Basic IRQs)\n", offset, value);
         break;
     case 0x1c: /* Disable IRQs 1 */
-        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (disable)\n", offset, value);
+        //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (disable)\n", offset, value);
         ic->enable_irqs_1 &= ~value;
         bcm2708_update_irq();
         break;
     case 0x20: /* Disable IRQs 2 */
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Disable IRQs 2)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (Disable IRQs 2)\n", offset, value);
         ic->enable_irqs_2 &= ~value;
         bcm2708_update_irq();
         break;
     case 0x24: /* Disable Basic IRQs */
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (Disable Basic IRQs)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (Disable Basic IRQs)\n", offset, value);
         ic->enable_basic_irqs &= ~value;
         bcm2708_update_irq();
         break;
     default:
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
     }
 }
 
-static uint64_t bcm2708_armctrl_read(void *opaque, target_phys_addr_t offset,
+static uint64_t bcm2708_armctrl_read(void *opaque, hwaddr offset,
                                      unsigned size)
 {
     BCM2708State *s = opaque;
@@ -347,7 +347,7 @@ static uint64_t bcm2708_armctrl_read(void *opaque, target_phys_addr_t offset,
     assert(size == 4);
 
     if (offset < 0x200) {
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n",
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x0000 (TODO)\n",
                offset);
     } else {
         value = bcm2708_ic_read(&s->ic, offset - 0x0200, size);
@@ -356,7 +356,7 @@ static uint64_t bcm2708_armctrl_read(void *opaque, target_phys_addr_t offset,
     return value;
 }
 
-static void bcm2708_armctrl_write(void *opaque, target_phys_addr_t offset,
+static void bcm2708_armctrl_write(void *opaque, hwaddr offset,
                                   uint64_t value, unsigned size)
 {
     BCM2708State *s = opaque;
@@ -364,7 +364,7 @@ static void bcm2708_armctrl_write(void *opaque, target_phys_addr_t offset,
     assert(size == 4);
 
     if (offset < 0x0200) {
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
     } else {
         bcm2708_ic_write(&s->ic, offset - 0x0200, value, size);
     }
@@ -372,7 +372,7 @@ static void bcm2708_armctrl_write(void *opaque, target_phys_addr_t offset,
 
 /* System timer. */
 
-static uint64_t bcm2708_st_read(void *opaque, target_phys_addr_t offset,
+static uint64_t bcm2708_st_read(void *opaque, hwaddr offset,
                                 unsigned size)
 {
     BCM2708SystemTimer *st = opaque;
@@ -384,21 +384,21 @@ static uint64_t bcm2708_st_read(void *opaque, target_phys_addr_t offset,
         break;
     case 0x08: /* CHI */
         value = (uint32_t)(bcm2708_timer_clock(st) >> 32);
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n", offset, value);
         break;
     case 0x0c ... 0x18: /* C0, C1, C2, C3 */
         value = st->c[(offset - 0x0c) / 4];
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n", offset, value);
         break;
     default:
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x (TODO)\n",
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x (TODO)\n",
                offset, value);
         return value;
     }
     return value;
 }
 
-static void bcm2708_st_write(void *opaque, target_phys_addr_t offset,
+static void bcm2708_st_write(void *opaque, hwaddr offset,
                              uint64_t value, unsigned size)
 {
     BCM2708SystemTimer *st = opaque;
@@ -408,25 +408,25 @@ static void bcm2708_st_write(void *opaque, target_phys_addr_t offset,
 
     switch (offset) {
     case 0x00: /* CS */
-        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (CS)\n",
+        //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (CS)\n",
                //~ offset, value);
         st->cs &= ~value;
         bcm2708_timer_irq(st);
         break;
     case 0x04: /* CLO */
     case 0x08: /* CHI */
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (ignored)\n",
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (ignored)\n",
                offset, value);
         break;
     case 0x0c ... 0x18: /* C0, C1, C2, C3 */
         timer_index = (offset - 0x0c) / 4;
         st->c[timer_index] = value;
-        //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (C%u)\n",
+        //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (C%u)\n",
                //~ offset, value, timer_index);
         bcm2708_timer_update(st);
         break;
     default:
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
     }
 }
 
@@ -470,7 +470,7 @@ static uint32_t bcm2708_emmc_read(BCM2708State *s, unsigned offset)
 
 static void bcm2708_emmc_write(BCM2708State *s, unsigned offset, uint32_t value)
 {
-    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+    //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n",
     //~        offset, value);
     switch (offset) {
     case 0x28:  /* host configuration bits */
@@ -501,7 +501,7 @@ static uint32_t bcm2708_gpio_read(BCM2708State *s, unsigned offset)
 
 static void bcm2708_gpio_write(BCM2708State *s, unsigned offset, uint32_t value)
 {
-    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+    //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n",
     //~        offset, value);
     switch (offset) {
     default:
@@ -527,7 +527,7 @@ static uint32_t bcm2708_usb_read(BCM2708State *s, unsigned offset)
 
 static void bcm2708_usb_write(BCM2708State *s, unsigned offset, uint32_t value)
 {
-    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08x\n",
+    //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%08x\n",
     //~        offset, value);
     switch (offset) {
     default:
@@ -644,7 +644,7 @@ static void bcm2708_0_sbm_write(BCM2708State *s, unsigned offset,
 
 #define IO(offset) (offset + BCM2708_PERI_BASE)
 
-static uint64_t bcm2708_read(void *opaque, target_phys_addr_t offset,
+static uint64_t bcm2708_read(void *opaque, hwaddr offset,
                              unsigned size)
 {
     BCM2708State *s = opaque;
@@ -672,12 +672,12 @@ static uint64_t bcm2708_read(void *opaque, target_phys_addr_t offset,
         value = bcm2708_usb_read(s, IO(offset) - USB_BASE);
         break;
     default:
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x0000 (TODO)\n", offset);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x0000 (TODO)\n", offset);
     }
     return value;
 }
 
-static void bcm2708_write(void *opaque, target_phys_addr_t offset,
+static void bcm2708_write(void *opaque, hwaddr offset,
                           uint64_t value, unsigned size)
 {
     BCM2708State *s = opaque;
@@ -701,7 +701,7 @@ static void bcm2708_write(void *opaque, target_phys_addr_t offset,
         bcm2708_usb_write(s, IO(offset) - USB_BASE, value);
         break;
     default:
-        logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
+        logout("offset=0x%02" HWADDR_PRIx ", value=0x%08" PRIx64 " (TODO)\n", offset, value);
     }
     //~ bcm2708_update(s);
 }

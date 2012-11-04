@@ -71,14 +71,14 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
     uint32_t c;
 
     if (offset >= 0xfe0 && offset < 0x1000) {
-        logout("offset=0x%02" TARGET_PRIxPHYS ". value=0x%08x (UART0) %s\n",
+        logout("offset=0x%02" HWADDR_PRIx ". value=0x%08x (UART0) %s\n",
                offset, s->id[(offset - 0xfe0) >> 2],
                bt());
 
         return s->id[(offset - 0xfe0) >> 2];
     }
 
-    //~ logout("offset=0x%02" TARGET_PRIxPHYS " (UART0) %s\n", offset,
+    //~ logout("offset=0x%02" HWADDR_PRIx " (UART0) %s\n", offset,
            //~ bt());
 
     switch (offset >> 2) {
@@ -149,7 +149,7 @@ static void pl011_write(void *opaque, hwaddr offset,
     pl011_state *s = (pl011_state *)opaque;
     unsigned char ch;
 
-    //~ logout("offset=0x%02" TARGET_PRIxPHYS ", value=0x%04" PRIx64 " (UART0) %s\n",
+    //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%04" PRIx64 " (UART0) %s\n",
            //~ offset, value, bt());
 
     switch (offset >> 2) {
