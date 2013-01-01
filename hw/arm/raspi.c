@@ -17,20 +17,19 @@
  */
 
 #include "qemu-common.h"
-#include "blockdev.h"
-#include "console.h"            /* graphic_console_init */
-#include "exec-memory.h"
+#include "exec/address-spaces.h"        /* get_system_memory */
 #include "hw/arm-misc.h"
 #include "hw/boards.h"
 #include "hw/devices.h"
 #include "hw/flash.h"
-#include "hw/framebuffer.h"     /* framebuffer_update_display */
-#include "hw/sd.h"              /* sd_init, ... */
+#include "hw/framebuffer.h"             /* framebuffer_update_display */
+#include "hw/sd.h"                      /* sd_init, ... */
 #include "hw/sysbus.h"
 //~ #include "i2c.h"
-#include "net.h"
+#include "net/net.h"
+#include "sysemu/sysemu.h"
+#include "ui/console.h"                 /* graphic_console_init */
 #include "raspi.h"
-#include "sysemu.h"
 
 #define logout(fmt, ...) \
     fprintf(stderr, "RPI\t%-24s" fmt, __func__, ##__VA_ARGS__)
@@ -1081,10 +1080,10 @@ static void raspi_init(QEMUMachineInitArgs *args)
 }
 
 static QEMUMachine raspi_machine = {
-    .name = "raspi",
+    .name = "rpi",
     .desc = "ARM Raspberry PI (ARM1176)",
     .init = raspi_init,
-    .use_scsi = 1,
+    .block_default_type = IF_SCSI,
     .no_parallel = true,
     //~ .use_virtcon:1,
     .no_floppy = true,
