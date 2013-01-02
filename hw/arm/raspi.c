@@ -1074,7 +1074,8 @@ static void raspi_init(QEMUMachineInitArgs *args)
     rpi->binfo.kernel_cmdline = args->kernel_cmdline;
     rpi->binfo.initrd_filename = args->initrd_filename;
     rpi->binfo.board_id = 0x183;
-    rpi->binfo.loader_start = BCM2708_SDRAM_BASE;
+    //~ rpi->binfo.loader_start = BCM2708_SDRAM_BASE;
+    rpi->binfo.loader_start = 0x00010000;
     rpi->binfo.nb_cpus = 1;
     arm_load_kernel(cpu, &rpi->binfo);
 }
