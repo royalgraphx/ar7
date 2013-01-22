@@ -96,7 +96,7 @@ static void bcm2835_vchiq_class_init(ObjectClass *klass, void *data)
     sdc->init = bcm2835_vchiq_init;
 }
 
-static TypeInfo bcm2835_vchiq_info = {
+static const TypeInfo bcm2835_vchiq_info = {
     .name          = "bcm2835_vchiq",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(bcm2835_vchiq_state),

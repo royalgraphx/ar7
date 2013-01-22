@@ -178,7 +178,7 @@ static void bcm2835_st_class_init(ObjectClass *klass, void *data)
     sdc->init = bcm2835_st_init;
 }
 
-static TypeInfo bcm2835_st_info = {
+static const TypeInfo bcm2835_st_info = {
     .name          = "bcm2835_st",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(bcm2835_st_state),

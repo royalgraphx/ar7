@@ -313,7 +313,7 @@ static void bcm2835_fb_class_init(ObjectClass *klass, void *data)
     sdc->init = bcm2835_fb_init;
 }
 
-static TypeInfo bcm2835_fb_info = {
+static const TypeInfo bcm2835_fb_info = {
     .name          = "bcm2835_fb",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(bcm2835_fb_state),
