@@ -41,8 +41,18 @@ typedef struct {
 #define PL011_FLAG_TXFF 0x20
 #define PL011_FLAG_RXFE 0x10
 
+#if !defined(BCM2708)
+#define logout(fmt, ...) \
+    do { } while (0)
+#endif
+
+#if defined(BCM2708)
+static const unsigned char pl011_id_arm[8] =
+  { 0x11, 0x10, 0x24, 0x00, 0x0d, 0xf0, 0x05, 0xb1 };
+#else
 static const unsigned char pl011_id_arm[8] =
   { 0x11, 0x10, 0x14, 0x00, 0x0d, 0xf0, 0x05, 0xb1 };
+#endif
 static const unsigned char pl011_id_luminary[8] =
   { 0x11, 0x00, 0x18, 0x01, 0x0d, 0xf0, 0x05, 0xb1 };
 
@@ -61,8 +71,16 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
     uint32_t c;
 
     if (offset >= 0xfe0 && offset < 0x1000) {
+        logout("offset=0x%02" HWADDR_PRIx ". value=0x%08x (UART0) %s\n",
+               offset, s->id[(offset - 0xfe0) >> 2],
+               bt());
+
         return s->id[(offset - 0xfe0) >> 2];
     }
+
+    //~ logout("offset=0x%02" HWADDR_PRIx " (UART0) %s\n", offset,
+           //~ bt());
+
     switch (offset >> 2) {
     case 0: /* UARTDR */
         s->flags &= ~PL011_FLAG_RXFF;
@@ -78,9 +96,7 @@ static uint64_t pl011_read(void *opaque, hwaddr offset,
         if (s->read_count == s->read_trigger - 1)
             s->int_level &= ~ PL011_INT_RX;
         pl011_update(s);
-        if (s->chr) {
-            qemu_chr_accept_input(s->chr);
-        }
+        qemu_chr_accept_input(s->chr);
         return c;
     case 1: /* UARTCR */
         return 0;
@@ -132,6 +148,9 @@ static void pl011_write(void *opaque, hwaddr offset,
 {
     pl011_state *s = (pl011_state *)opaque;
     unsigned char ch;
+
+    //~ logout("offset=0x%02" HWADDR_PRIx ", value=0x%04" PRIx64 " (UART0) %s\n",
+           //~ offset, value, bt());
 
     switch (offset >> 2) {
     case 0: /* UARTDR */
@@ -193,6 +212,8 @@ static int pl011_can_receive(void *opaque)
 {
     pl011_state *s = (pl011_state *)opaque;
 
+    //~ logout("\n");
+
     if (s->lcr & 0x10)
         return s->read_count < 16;
     else
@@ -221,11 +242,13 @@ static void pl011_put_fifo(void *opaque, uint32_t value)
 
 static void pl011_receive(void *opaque, const uint8_t *buf, int size)
 {
+    //~ logout("\n");
     pl011_put_fifo(opaque, *buf);
 }
 
 static void pl011_event(void *opaque, int event)
 {
+    logout("\n");
     if (event == CHR_EVENT_BREAK)
         pl011_put_fifo(opaque, 0x400);
 }
@@ -260,6 +283,10 @@ static const VMStateDescription vmstate_pl011 = {
         VMSTATE_END_OF_LIST()
     }
 };
+
+#if defined(BCM2708)
+
+#else /* BCM2708 */
 
 static int pl011_init(SysBusDevice *dev, const unsigned char *id)
 {
@@ -328,3 +355,5 @@ static void pl011_register_types(void)
 }
 
 type_init(pl011_register_types)
+
+#endif /* BCM2708 */
