@@ -306,7 +306,7 @@ static void bcm2835_property_mbox_push(bcm2835_property_state *s,
 #endif
 
     if (bcm2835_fb_dirty) {
-        qemu_console_resize(bcm2835_fb.ds, bcm2835_fb.xres, bcm2835_fb.yres);
+        qemu_console_resize(bcm2835_fb.con, bcm2835_fb.xres, bcm2835_fb.yres);
         bcm2835_fb.invalidate = 1;
     }
 }
