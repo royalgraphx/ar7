@@ -83,7 +83,7 @@ typedef struct {
 } FBInfo;
 
 typedef struct {
-    DisplayState *ds;
+    QemuConsole *con;
     drawfn *line_fn;
     unsigned cols;
     unsigned rows;
@@ -805,7 +805,7 @@ static void bcm2708_fb_update(void *opaque)
     src_width = s->src_width;
     dest_width = s->width * s->dest_width;
 
-    framebuffer_update_display(s->ds, sysbus_address_space(&s->busdev),
+    framebuffer_update_display(s->con, sysbus_address_space(&s->busdev),
                                s->base, s->cols, s->rows,
                                src_width, dest_width, 0,
                                s->need_update,
@@ -911,9 +911,9 @@ static int bcm2708_init(SysBusDevice *dev)
                                 busdev->mmio[0].memory);
     sysbus_init_irq(busdev, &s->ic.irq[0]);
 
-    s->fb.ds = graphic_console_init(bcm2708_fb_update, bcm2708_fb_invalidate,
-                                    bcm2708_fb_dump, bcm2708_fb_text_update,
-                                    &s->fb);
+    s->fb.con = graphic_console_init(bcm2708_fb_update, bcm2708_fb_invalidate,
+                                     bcm2708_fb_dump, bcm2708_fb_text_update,
+                                     &s->fb);
 
     switch (16) {
     case 0:
