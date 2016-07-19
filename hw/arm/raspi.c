@@ -36,6 +36,7 @@ static const uint32_t raspi_boardrev[] = {[1] = 0x10, [2] = 0xa21041};
 typedef struct RasPiState {
     Object *soc;
     MemoryRegion ram;
+    MemoryRegion ram_alias;
 } RasPiState;
 
 static void write_smpboot(ARMCPU *cpu, const struct arm_boot_info *info)
@@ -138,6 +139,9 @@ static void raspi_machine_init(MachineState *machine, int version,
                                          machine->ram_size);
     /* FIXME: Remove when we have custom CPU address space support */
     memory_region_add_subregion_overlap(get_system_memory(), 0, &s->ram, 0);
+
+    memory_region_init_alias(&s->ram_alias, NULL, "ram.alias", &s->ram, 0, machine->ram_size);
+    memory_region_add_subregion(get_system_memory(), 0x80000000, &s->ram_alias);
 
     /* Setup the SOC */
     object_property_add_const_link(s->soc, "ram", OBJECT(&s->ram),
