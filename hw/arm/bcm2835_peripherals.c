@@ -92,6 +92,11 @@ static void bcm2835_peripherals_init(Object *obj)
     object_property_add_child(obj, "power", OBJECT(&s->power), NULL);
     qdev_set_parent_bus(DEVICE(&s->power), sysbus_get_default());
 
+    /* Random number generator */
+    object_initialize(&s->rng, sizeof(s->rng), TYPE_BCM2835_RNG);
+    object_property_add_child(obj, "rng", OBJECT(&s->rng), NULL);
+    qdev_set_parent_bus(DEVICE(&s->rng), sysbus_get_default());
+
     /* Framebuffer */
     object_initialize(&s->fb, sizeof(s->fb), TYPE_BCM2835_FB);
     object_property_add_child(obj, "fb", OBJECT(&s->fb), NULL);
@@ -173,6 +178,16 @@ static void bcm2835_peripherals_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(&s->peri_mr, ARMCTRL_IC_OFFSET,
                 sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->ic), 0));
     sysbus_pass_irq(SYS_BUS_DEVICE(s), SYS_BUS_DEVICE(&s->ic));
+
+    /* RNG */
+    object_property_set_bool(OBJECT(&s->rng), true, "realized", &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    memory_region_add_subregion(&s->peri_mr, RNG_OFFSET,
+                sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->rng), 0));
 
     /* UART0 */
     qdev_prop_set_chr(DEVICE(s->uart0), "chardev", serial_hds[0]);
