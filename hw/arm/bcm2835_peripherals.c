@@ -74,6 +74,16 @@ static void bcm2835_peripherals_init(Object *obj)
     object_property_add_const_link(OBJECT(&s->usb), "dma_mr",
                                    OBJECT(&s->gpu_bus_mr), &error_abort);
 
+    /* GPIO */
+    object_initialize(&s->gpio, sizeof(s->gpio), TYPE_BCM2835_GPIO);
+    object_property_add_child(obj, "gpio", OBJECT(&s->gpio), NULL);
+    qdev_set_parent_bus(DEVICE(&s->gpio), sysbus_get_default());
+
+    /* MMCI0 */
+    object_initialize(&s->mmci0, sizeof(s->mmci0), TYPE_BCM2835_MMCI0);
+    object_property_add_child(obj, "mmci0", OBJECT(&s->mmci0), NULL);
+    qdev_set_parent_bus(DEVICE(&s->mmci0), sysbus_get_default());
+
     /* MPHI - Message-based Parallel Host Interface */
     object_initialize(&s->mphi, sizeof(s->mphi), TYPE_BCM2835_MPHI);
     object_property_add_child(obj, "mphi", OBJECT(&s->mphi), NULL);
@@ -264,6 +274,26 @@ static void bcm2835_peripherals_realize(DeviceState *dev, Error **errp)
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->usb), 0,
         qdev_get_gpio_in_named(DEVICE(&s->ic), BCM2835_IC_GPU_IRQ,
                                INTERRUPT_USB));
+
+    /* GPIO */
+    object_property_set_bool(OBJECT(&s->gpio), true, "realized", &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    memory_region_add_subregion(&s->peri_mr, GPIO_OFFSET,
+                sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->gpio), 0));
+
+    /* MMCI0 */
+    object_property_set_bool(OBJECT(&s->mmci0), true, "realized", &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    memory_region_add_subregion(&s->peri_mr, MMCI0_OFFSET,
+                sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->mmci0), 0));
 
     /* MPHI - Message-based Parallel Host Interface */
     object_property_set_bool(OBJECT(&s->mphi), true, "realized", &err);
