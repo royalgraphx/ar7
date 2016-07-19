@@ -1142,11 +1142,11 @@ const char *qemu_sprint_backtrace(char *buffer, size_t length)
 static uint64_t unassigned_mem_read(void *opaque, hwaddr addr,
                                     unsigned size)
 {
-    if (trace_unassigned) {
-        char buffer[256];
-        fprintf(stderr, "Unassigned mem read " TARGET_FMT_plx " %s\n",
-                addr, qemu_sprint_backtrace(buffer, sizeof(buffer)));
-    }
+    char buffer[256];
+    qemu_log_mask(LOG_UNIMP,
+                  "%s " TARGET_FMT_plx " %s\n", __func__,
+                  addr, qemu_sprint_backtrace(buffer, sizeof(buffer)));
+
     //~ vm_stop(0);
     if (current_cpu != NULL) {
         cpu_unassigned_access(current_cpu, addr, false, false, 0, size);
@@ -1157,12 +1157,11 @@ static uint64_t unassigned_mem_read(void *opaque, hwaddr addr,
 static void unassigned_mem_write(void *opaque, hwaddr addr,
                                  uint64_t val, unsigned size)
 {
-    if (trace_unassigned) {
-        char buffer[256];
-        fprintf(stderr, "Unassigned mem write " TARGET_FMT_plx
-                " = 0x%" PRIx64 " %s\n",
-                addr, val, qemu_sprint_backtrace(buffer, sizeof(buffer)));
-    }
+    char buffer[256];
+    qemu_log_mask(LOG_UNIMP,
+                  "%s " TARGET_FMT_plx " = 0x%" PRIx64 " %s\n", __func__,
+                  addr, val, qemu_sprint_backtrace(buffer, sizeof(buffer)));
+
     if (current_cpu != NULL) {
         cpu_unassigned_access(current_cpu, addr, true, false, 0, size);
     }

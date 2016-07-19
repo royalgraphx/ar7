@@ -187,9 +187,6 @@ int icount_align_option;
 uint8_t qemu_uuid[16];
 bool qemu_uuid_set;
 
-/* Trace unassigned memory or i/o accesses. */
-bool trace_unassigned;
-
 static NotifierList exit_notifiers =
     NOTIFIER_LIST_INITIALIZER(exit_notifiers);
 
@@ -3906,9 +3903,6 @@ int main(int argc, char **argv)
             case QEMU_OPTION_trace:
                 g_free(trace_file);
                 trace_file = trace_opt_parse(optarg);
-                break;
-            case QEMU_OPTION_trace_unassigned:
-                trace_unassigned = true;
                 break;
             case QEMU_OPTION_readconfig:
                 {

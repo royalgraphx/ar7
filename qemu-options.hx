@@ -190,8 +190,8 @@ Set default value of @var{driver}'s property @var{prop} to @var{value}, e.g.:
 qemu-system-i386 -global ide-drive.physical_block_size=4096 -drive file=file,if=ide,index=0,media=disk
 @end example
 
-In particular, you can use this to set driver properties for devices which are 
-created automatically by the machine model. To create a device which is not 
+In particular, you can use this to set driver properties for devices which are
+created automatically by the machine model. To create a device which is not
 created automatically and set properties on it, use -@option{device}.
 
 -global @var{driver}.@var{prop}=@var{value} is shorthand for -global
@@ -3678,17 +3678,6 @@ The @code{-no-user-config} option makes QEMU not load any of the user-provided
 config files on @var{sysconfdir}, but won't make it skip the QEMU-provided config
 files from @var{datadir}.
 ETEXI
-
-DEF("trace-unassigned", 0, QEMU_OPTION_trace_unassigned,
-    "-trace-unassigned\n"
-    "                Trace unassigned memory or i/o accesses\n",
-    QEMU_ARCH_ALL)
-STEXI
-@item -trace-unassigned
-@findex -trace-unassigned
-Trace unassigned memory or i/o accesses to stderr.
-ETEXI
-
 DEF("trace", HAS_ARG, QEMU_OPTION_trace,
     "-trace [[enable=]<pattern>][,events=<file>][,file=<file>]\n"
     "                specify tracing options\n",

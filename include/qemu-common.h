@@ -25,9 +25,6 @@
 #define KiB     1024
 #define MiB     (KiB * KiB)
 
-/* Trace unassigned memory or i/o accesses. */
-extern bool trace_unassigned;
-
 /* main function, renamed */
 #if defined(CONFIG_COCOA)
 int qemu_main(int argc, char **argv, char **envp);
