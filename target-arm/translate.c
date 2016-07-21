@@ -9461,6 +9461,9 @@ static void disas_arm_insn(DisasContext *s, unsigned int insn)
             break;
         default:
         illegal_op:
+            qemu_log_mask(LOG_GUEST_ERROR, "%s: Illegal instruction 0x%08x\n",
+                          __func__, insn);
+
             gen_exception_insn(s, 4, EXCP_UDEF, syn_uncategorized(),
                                default_exception_el(s));
             break;
