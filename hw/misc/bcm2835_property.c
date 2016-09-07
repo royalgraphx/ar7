@@ -138,6 +138,21 @@ static void bcm2835_property_mbox_push(BCM2835PropertyState *s, uint32_t value)
             resplen = 8;
             break;
 
+        case 0x00030030: /* RPI_FIRMWARE_GET_DOMAIN_STATE */
+            /* Firmware supports the new power domains interface */
+            tmp = ldl_le_phys(&s->dma_as, value + 4);
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: unhandled tag %08x (%s), 04=%04x\n",
+                          __func__, tag, "RPI_FIRMWARE_GET_DOMAIN_STATE", tmp);
+            break;
+
+        case 0x00038042: /* RPI_FIRMWARE_SET_SDHOST_CLOCK */
+            tmp = ldl_le_phys(&s->dma_as, value + 4);
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: unhandled tag %08x (%s), 04=%04x\n",
+                          __func__, tag, "RPI_FIRMWARE_SET_SDHOST_CLOCK", tmp);
+            break;
+
         /* Frame buffer */
 
         case 0x00040001: /* Allocate buffer */
@@ -237,6 +252,13 @@ static void bcm2835_property_mbox_push(BCM2835PropertyState *s, uint32_t value)
             newyoffset = &yoffset;
             resplen = 8;
             break;
+        case 0x00048010: /* RPI_FIRMWARE_VCHIQ_INIT */
+            /* Send the base address of the slots to VideoCore */
+            tmp = ldl_le_phys(&s->dma_as, value + 4);
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: unhandled tag %08x (%s), 04=%04x\n",
+                          __func__, tag, "RPI_FIRMWARE_VCHIQ_INIT", tmp);
+            break;
         case 0x0004000a: /* Get/Test/Set overscan */
         case 0x0004400a:
         case 0x0004800a:
@@ -271,8 +293,8 @@ static void bcm2835_property_mbox_push(BCM2835PropertyState *s, uint32_t value)
             break;
 
         default:
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "bcm2835_property: unhandled tag %08x\n", tag);
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: unhandled tag %08x\n", __func__, tag);
             break;
         }
 
