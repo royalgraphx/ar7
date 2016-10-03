@@ -9,9 +9,31 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
+#include "trace.h"
 #include "trace/control.h"
 #include "translate-all.h"
 
+
+void trace_event_set_state_dynamic_init(TraceEvent *ev, bool state)
+{
+    TraceEventID id = trace_event_get_id(ev);
+    bool state_pre;
+    assert(trace_event_get_state_static(ev));
+    /*
+     * We ignore the "vcpu" property here, since no vCPUs have been created
+     * yet. Then dstate can only be 1 or 0.
+     */
+    state_pre = trace_events_dstate[id];
+    if (state_pre != state) {
+        if (state) {
+            trace_events_enabled_count++;
+            trace_events_dstate[id] = 1;
+        } else {
+            trace_events_enabled_count--;
+            trace_events_dstate[id] = 0;
+        }
+    }
+}
 
 void trace_event_set_state_dynamic(TraceEvent *ev, bool state)
 {
@@ -22,9 +44,18 @@ void trace_event_set_state_dynamic(TraceEvent *ev, bool state)
             trace_event_set_vcpu_state_dynamic(vcpu, ev, state);
         }
     } else {
+        /* Without the "vcpu" property, dstate can only be 1 or 0 */
         TraceEventID id = trace_event_get_id(ev);
-        trace_events_enabled_count += state - trace_events_dstate[id];
-        trace_events_dstate[id] = state;
+        bool state_pre = trace_events_dstate[id];
+        if (state_pre != state) {
+            if (state) {
+                trace_events_enabled_count++;
+                trace_events_dstate[id] = 1;
+            } else {
+                trace_events_enabled_count--;
+                trace_events_dstate[id] = 0;
+            }
+        }
     }
 }
 
@@ -50,4 +81,43 @@ void trace_event_set_vcpu_state_dynamic(CPUState *vcpu,
             trace_events_dstate[id]--;
         }
     }
+}
+
+static bool adding_first_cpu(void)
+{
+    CPUState *cpu;
+    size_t count = 0;
+    CPU_FOREACH(cpu) {
+        count++;
+        if (count > 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void trace_init_vcpu(CPUState *vcpu)
+{
+    TraceEvent *ev = NULL;
+
+    while ((ev = trace_event_pattern("*", ev)) != NULL) {
+        if (trace_event_is_vcpu(ev) &&
+            trace_event_get_state_static(ev) &&
+            trace_event_get_state_dynamic(ev)) {
+            TraceEventID id = trace_event_get_id(ev);
+            if (adding_first_cpu()) {
+                /* check preconditions */
+                assert(trace_events_dstate[id] == 1);
+                /* disable early-init state ... */
+                trace_events_dstate[id] = 0;
+                trace_events_enabled_count--;
+                /* ... and properly re-enable */
+                trace_event_set_vcpu_state_dynamic(vcpu, ev, true);
+            } else {
+                trace_event_set_vcpu_state_dynamic(vcpu, ev, true);
+            }
+        }
+    }
+
+    trace_guest_cpu_enter(vcpu);
 }

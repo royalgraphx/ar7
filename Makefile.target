@@ -176,7 +176,7 @@ $(QEMU_RUBY): $(OBJS) libqemu.a
 	$(CC) -shared $(VL_LDFLAGS) -o $(QEMU_RUBY) $^ $(LIBS) $(SDL_LIBS) $(COCOA_LIBS) $(VL_LIBS)
 endif
 
-GENERATED_HEADERS += hmp-commands.h hmp-commands-info.h qmp-commands-old.h
+GENERATED_HEADERS += hmp-commands.h hmp-commands-info.h
 
 endif # CONFIG_SOFTMMU
 
@@ -229,13 +229,10 @@ hmp-commands.h: $(SRC_PATH)/hmp-commands.hx $(SRC_PATH)/scripts/hxtool
 hmp-commands-info.h: $(SRC_PATH)/hmp-commands-info.hx $(SRC_PATH)/scripts/hxtool
 	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $(TARGET_DIR)$@")
 
-qmp-commands-old.h: $(SRC_PATH)/qmp-commands.hx $(SRC_PATH)/scripts/hxtool
-	$(call quiet-command,sh $(SRC_PATH)/scripts/hxtool -h < $< > $@,"  GEN   $(TARGET_DIR)$@")
-
-clean:
+clean: clean-target
 	rm -f *.a *~ $(PROGS)
 	rm -f $(shell find . -name '*.[od]')
-	rm -f hmp-commands.h qmp-commands-old.h gdbstub-xml.c
+	rm -f hmp-commands.h gdbstub-xml.c
 ifdef CONFIG_TRACE_SYSTEMTAP
 	rm -f *.stp
 endif
