@@ -8,6 +8,8 @@ DOCKER_IMAGES := $(notdir $(basename $(wildcard $(DOCKER_FILES_DIR)/*.docker)))
 DOCKER_TARGETS := $(patsubst %,docker-image-%,$(DOCKER_IMAGES))
 # Use a global constant ccache directory to speed up repetitive builds
 DOCKER_CCACHE_DIR := $$HOME/.cache/qemu-docker-ccache
+# Results built by the docker execution
+DOCKER_RESULT_DIR := $(shell mktemp -d --suffix=_qemu-docker)
 
 DOCKER_TESTS := $(notdir $(shell \
 	find $(SRC_PATH)/tests/docker/ -name 'test-*' -type f))
@@ -130,9 +132,10 @@ docker-run: docker-qemu-src
 			-e CCACHE_DIR=/var/tmp/ccache 			\
 			-v $$(readlink -e $(DOCKER_SRC_COPY)):/var/tmp/qemu:z$(COMMA)ro \
 			-v $(DOCKER_CCACHE_DIR):/var/tmp/ccache:z 	\
+			-v $(DOCKER_RESULT_DIR):/var/tmp/install:z      \
 			$(IMAGE) 					\
 			/var/tmp/qemu/run 				\
-			$(TEST), "  RUN $(TEST) in ${IMAGE}")
+			$(TEST), "  RUN $(TEST) in ${IMAGE} OUTPUT $(DOCKER_RESULT_DIR)")
 
 # Run targets:
 #
