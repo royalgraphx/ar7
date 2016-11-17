@@ -25,7 +25,7 @@ make-archive-maybe = $(if $(wildcard $1/*), \
 		(cd $1; if git diff-index --quiet HEAD -- &>/dev/null; then \
 			git archive -1 HEAD --format=tar.gz; \
 		else \
-			git archive -1 $$(git stash create) --format=tar.gz; \
+			git archive -1 HEAD --format=tar.gz; \
 		fi) > $2, \
 		"ARCHIVE","$(notdir $2)"))
 
