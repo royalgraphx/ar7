@@ -48,8 +48,8 @@ sudo apt-get install --yes --no-install-recommends \
   bison flex gettext python3-sphinx texinfo \
   $PKG_ARCH-adwaita-icon-theme $PKG_ARCH-cogl $PKG_ARCH-curl \
   $PKG_ARCH-gmp $PKG_ARCH-gnutls $PKG_ARCH-gtk3 $PKG_ARCH-icu \
-  $PKG_ARCH-libxml2 $PKG_ARCH-ncurses $PKG_ARCH-SDL2 $PKG_ARCH-usbredir $PKG_ARCH-virglrenderer $PKG_ARCH-libepoxy \
-  $PKG_ARCH-glib2 $PKG_ARCH-mcfgthread $PKG_ARCH-mesa $PKG_ARCH-SDL2_image $PKG_ARCH-libusb $PKG_ARCH-libslirp $PKG_ARCH-cyrus-sasl
+  $PKG_ARCH-libxml2 $PKG_ARCH-ncurses $PKG_ARCH-sdl2 $PKG_ARCH-usbredir $PKG_ARCH-virglrenderer $PKG_ARCH-libepoxy \
+  $PKG_ARCH-glib2 $PKG_ARCH-mesa $PKG_ARCH-sdl2_image $PKG_ARCH-libusb
 if test "$ARCH" = "i686"; then
 curl -sS -O http://de.archive.ubuntu.com/ubuntu/pool/universe/m/mingw-w64/mingw-w64-i686-dev_10.0.0-2_all.deb
 sudo dpkg -i mingw-w64-i686-dev_10.0.0-2_all.deb
