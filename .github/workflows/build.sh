@@ -41,7 +41,7 @@ echo deb https://qemu.weilnetz.de/debian/ testing contrib | \
 
 # Install packages.
 sudo apt-get update
-sudo apt-get install --yes --no-install-recommends \
+sudo apt-get install --yes \
   mingw-w64-tools ninja-build nsis \
   gcc libc6-dev \
   g++-mingw-w64-${ARCH/_/-} gcc-mingw-w64-${ARCH/_/-} \
