@@ -111,7 +111,7 @@ jobs:
         run: |
           mkdir build-msys
           cd build-msys
-          msys2 -c '../.github/workflows/build-msys.sh'
+          msys2 -c '../.github/workflows/buildwin.sh'
       - name: Upload zip
         uses: actions/upload-artifact@v3
         with:
